@@ -44,6 +44,11 @@ class BaseOptions():
         parser.add_argument('--init_type', type=str, default='normal', help='network initialization [normal|xavier|kaiming|orthogonal]')
         parser.add_argument('--verbose', action='store_true', help='if specified, print more debugging information')
         parser.add_argument('--suffix', default='', type=str, help='customized suffix: opt.name = opt.name + suffix: e.g., {model}_{which_model_netG}_size{loadSize}')
+
+        # The following opts are for Semi-Supervised GAN
+        parser.add_argument('--aligned_random_crop', default=0, type=int, help='0: not crop; 1: crop')
+        parser.add_argument('--clip_size', default=1, type=int, help='Repeatly sample clip_size times')
+
         self.initialized = True
         return parser
 
@@ -51,7 +56,7 @@ class BaseOptions():
         # initialize parser with basic options
         if not self.initialized:
             parser = argparse.ArgumentParser(
-                formatter_class=argparse.ArgumentDefaultsHelpFormatter)            
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             parser = self.initialize(parser)
 
         # get the basic options
@@ -69,7 +74,7 @@ class BaseOptions():
         parser = dataset_option_setter(parser, self.isTrain)
 
         self.parser = parser
-        
+
         return parser.parse_args()
 
     def print_options(self, opt):

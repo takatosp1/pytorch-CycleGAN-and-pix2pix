@@ -258,5 +258,3 @@ If you love cats, and love reading cool graphics, vision, and learning papers, p
 
 ## Acknowledgments
 Code is inspired by [pytorch-DCGAN](https://github.com/pytorch/examples/tree/master/dcgan).
-
-## Updates

@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
+import math
 
 ###############################################################################
 # Helper Functions
@@ -380,3 +381,175 @@ class PixelDiscriminator(nn.Module):
 
     def forward(self, input):
         return self.net(input)
+
+
+class GatedGenerator(nn.Module):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+        super(GatedGenerator, self).__init__()
+        self.real_stream = self._downsample_stream_gate(input_nc, output_nc)
+        self.fake_stream = self._downsample_stream_gate(input_nc, output_nc)
+        self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
+
+        self.g_down = self._downsample_stream(input_nc, output_nc)
+        self.g_up = self._upsample_stream(input_nc, output_nc)
+
+    def _downsample_stream(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', n_downsampling=2):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+                           bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        for i in range(n_downsampling):
+            self.mult = 2**i
+            model += [nn.Conv2d(ngf * self.mult, ngf * self.mult * 2, kernel_size=3,
+                                stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * self.mult * 2),
+                      nn.ReLU(True)]
+
+        self.mult = 2**n_downsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        model = nn.Sequential(*model)
+        return model
+
+
+    def _upsample_stream(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', n_upsampling=2, use_tanh=True, use_sigmoid=False):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = []
+        mult = 2**n_upsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        for i in range(n_upsampling):
+            mult = 2**(n_upsampling - i)
+            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                         kernel_size=3, stride=2,
+                                         padding=1, output_padding=1,
+                                         bias=use_bias),
+                      norm_layer(int(ngf * mult / 2)),
+                      nn.ReLU(True)]
+
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+
+        if use_tanh:
+            model += [nn.Tanh()]
+        if use_sigmoid:
+            model += [nn.Sigmoid()]
+        model = nn.Sequential(*model)
+        return model
+
+
+    def _downsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=2, padding_type='reflect', n_downsampling=4):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+                           bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        for i in range(n_downsampling):
+            self.mult = 2**i
+            model += [nn.Conv2d(ngf * self.mult, ngf * self.mult * 2, kernel_size=3,
+                                stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * self.mult * 2),
+                      nn.ReLU(True)]
+
+        self.mult = 2**n_downsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        # model += [nn.Sigmoid()]
+
+        model = nn.Sequential(*model)
+        return model
+
+
+    def _upsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, padding_type='reflect', n_upsampling=4, use_tanh=True, use_sigmoid=False):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = []
+        down_step = math.log(ngf * self.mult, 2)
+        down_step = 2 ** (down_step / (n_upsampling + 1))
+        step = [int(ngf * self.mult / down_step ** i) for i in range(n_upsampling + 2)]
+        print(step)
+        """
+        for i in range(n_upsampling):
+            model += [nn.ConvTranspose2d(step[i], step[i + 1],
+                                         kernel_size=3, stride=2,
+                                         padding=1, output_padding=1,
+                                         bias=use_bias),
+                      norm_layer(int(step[i + 1])),
+                      nn.ReLU(True)]
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(step[n_upsampling], step[n_upsampling + 1], kernel_size=7, padding=0)]
+        """
+
+        model += [nn.Sigmoid()]
+        model += [nn.UpsamplingBilinear2d(scale_factor=n_upsampling**2)]
+
+        """
+        if use_tanh:
+            model += [nn.Tanh()]
+        if use_sigmoid:
+            model += [nn.Sigmoid()]
+        """
+
+        model = nn.Sequential(*model)
+        return model
+
+    def forward(self, input_img, ground_truth):
+        gate_real_mid = self.real_stream.forward(input_img)
+        gate_fake_mid = self.fake_stream.forward(ground_truth)
+        gate_mid = gate_real_mid * gate_fake_mid
+        gate_mid = torch.sum(gate_mid, dim=1)
+        gate_mid = torch.unsqueeze(gate_mid, 1)
+        gate_out = self.out_gated_stream.forward(gate_mid)
+
+        g_down = self.g_down(input_img)
+        g_up = self.g_up(g_down)
+
+        # out = torch.mm(g_up, gate_out)
+        out = g_up * gate_out
+
+        # ground_truth_gate = ground_truth * gate_out
+        # return out, gate_out, ground_truth_gate
+        return out, gate_out
+
+
+def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
+    netG = None
+    norm_layer = get_norm_layer(norm_type=norm)
+
+    netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
+    return init_net(netG, init_type, gpu_ids)
