@@ -546,11 +546,11 @@ class GatedGenerator(nn.Module):
         # out = torch.mm(g_up, gate_out)
         out = g_up * gate_out
 
-        gate_sum = gate_mid.sum(3).sum(2)
 
         # ground_truth_gate = ground_truth * gate_out
         # return out, gate_out, ground_truth_gate
         if constraint:
+            gate_sum = gate_mid.sum(3).sum(2)
             return out, gate_out, gate_sum
         else:
             return out, gate_out
