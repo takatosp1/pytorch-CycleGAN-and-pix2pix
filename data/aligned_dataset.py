@@ -96,7 +96,7 @@ class AlignedDataset(BaseDataset):
         if self.opt.aligned_random_crop:
             list_A = []
             for num_stream in range(self.opt.num_stream):
-                tmp = self._aligned_random_crop(A)
+                tmp = self._aligned_random_crop(A.clone())
                 list_A.append(tmp)
             A = list_A
 

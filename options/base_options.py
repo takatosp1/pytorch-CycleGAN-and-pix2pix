@@ -49,6 +49,7 @@ class BaseOptions():
         parser.add_argument('--aligned_random_crop', default=0, type=int, help='0: not crop; 1: crop')
         parser.add_argument('--clip_size', default=1, type=int, help='Repeatly sample clip_size times')
         parser.add_argument('--num_stream', default=1, type=int, help='Number of streams, only work with aligned_random_crop')
+        parser.add_argument('--add_coor', default=0, type=int, help='Add coordinate')
 
         self.initialized = True
         return parser

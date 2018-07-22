@@ -66,7 +66,7 @@ class SemiPix2PixModel(BaseModel):
         self.real_B = []
         for stream_num in range(self.opt.num_stream):
             self.real_B.append(
-                input['B' if AtoB else 'A'][stream_num].to(self.device))
+                input['B' if AtoB else 'A'][stream_num].clone().to(self.device))
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -75,8 +75,8 @@ class SemiPix2PixModel(BaseModel):
         for stream_num in range(self.opt.num_stream):
             fake_B, gate = \
                 self.netG(self.real_A, self.real_B[stream_num])
-            self.fake_B.append(fake_B)
-            self.gate.append(gate)
+            self.fake_B.append(fake_B.clone())
+            self.gate.append(gate.clone())
         # TODO do we need a mask on the GT
         # self.fake_B, self.gate, self.gated_B = self.netG(self.real_A, self.real_B)
 

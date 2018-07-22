@@ -79,6 +79,8 @@ class BaseModel():
                 if type(tmp) == list:
                     for i in range(len(tmp)):
                         visual_ret['{}_{}'.format(name, i)] = tmp[i]
+                else:
+                    visual_ret[name] = tmp
         return visual_ret
 
     # return traning losses/errors. train.py will print out these errors as debugging information
