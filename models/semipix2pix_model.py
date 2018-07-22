@@ -2,6 +2,7 @@ import torch
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
+import torch.nn as nn
 
 
 class SemiPix2PixModel(BaseModel):
@@ -60,6 +61,8 @@ class SemiPix2PixModel(BaseModel):
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
+            self.criterionMask = nn.MSELoss()
+
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
@@ -72,11 +75,14 @@ class SemiPix2PixModel(BaseModel):
     def forward(self):
         self.fake_B = []
         self.gate = []
+        # self.sum_gate = []
         for stream_num in range(self.opt.num_stream):
+            # fake_B, gate, sum_gate = \
             fake_B, gate = \
                 self.netG(self.real_A, self.real_B[stream_num])
             self.fake_B.append(fake_B.clone())
             self.gate.append(gate.clone())
+            # self.sum_gate.append(sum_gate.clone())
         # TODO do we need a mask on the GT
         # self.fake_B, self.gate, self.gated_B = self.netG(self.real_A, self.real_B)
 
@@ -89,6 +95,9 @@ class SemiPix2PixModel(BaseModel):
             pred_fake = self.netD(fake_AB.detach())
             self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
+            # mask_target = torch.tensor([[256 * 0.25]]).to(self.device)
+            # self.loss_mask = self.criterionMask(self.sum_gate[stream_num], mask_target)
+
             # Real
             # real_AB = torch.cat((self.real_A, self.gated_B), 1)
             # TODO do we need a mask on the GT
@@ -100,6 +109,9 @@ class SemiPix2PixModel(BaseModel):
             self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
 
             self.loss_D.backward(retain_graph=True, create_graph=True)
+
+            # self.loss_mask.backward(retain_graph=True, create_graph=True)
+
 
     def backward_G(self):
         # First, G(A) should fake the discriminator

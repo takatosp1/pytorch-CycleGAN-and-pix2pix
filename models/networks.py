@@ -4,6 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 import math
+import torch.nn.functional as F
 
 ###############################################################################
 # Helper Functions
@@ -531,6 +532,11 @@ class GatedGenerator(nn.Module):
     def forward(self, input_img, ground_truth):
         gate_real_mid = self.real_stream.forward(input_img)
         gate_fake_mid = self.fake_stream.forward(ground_truth)
+        # L2 normalized then production -> cosine distance
+        # gate_real_mid = torch.norm(gate_real_mid, p=2, dim=1)
+        gate_real_mid = F.normalize(gate_real_mid, p=2, dim=1)
+        gate_fake_mid = torch.norm(gate_fake_mid, p=2, dim=1)
+        gate_fake_mid = F.normalize(gate_fake_mid, p=2, dim=1)
         gate_mid = gate_real_mid * gate_fake_mid
         gate_mid = torch.sum(gate_mid, dim=1)
         gate_mid = torch.unsqueeze(gate_mid, 1)
@@ -542,8 +548,11 @@ class GatedGenerator(nn.Module):
         # out = torch.mm(g_up, gate_out)
         out = g_up * gate_out
 
+        # gate_sum = gate_mid.sum(3).sum(2)
+
         # ground_truth_gate = ground_truth * gate_out
         # return out, gate_out, ground_truth_gate
+        # return out, gate_out, gate_sum
         return out, gate_out
 
 
