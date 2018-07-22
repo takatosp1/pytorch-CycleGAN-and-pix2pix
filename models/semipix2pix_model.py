@@ -75,14 +75,18 @@ class SemiPix2PixModel(BaseModel):
     def forward(self):
         self.fake_B = []
         self.gate = []
-        # self.sum_gate = []
+        self.sum_gate = []
         for stream_num in range(self.opt.num_stream):
-            # fake_B, gate, sum_gate = \
-            fake_B, gate = \
-                self.netG(self.real_A, self.real_B[stream_num])
+            if self.opt.add_constraint:
+                fake_B, gate, sum_gate = \
+                    self.netG(self.real_A, self.real_B[stream_num], constraint=True)
+            else:
+                fake_B, gate = \
+                    self.netG(self.real_A, self.real_B[stream_num], constraint=False)
             self.fake_B.append(fake_B.clone())
             self.gate.append(gate.clone())
-            # self.sum_gate.append(sum_gate.clone())
+            if self.opt.add_constraint:
+                self.sum_gate.append(sum_gate.clone())
         # TODO do we need a mask on the GT
         # self.fake_B, self.gate, self.gated_B = self.netG(self.real_A, self.real_B)
 
@@ -95,8 +99,9 @@ class SemiPix2PixModel(BaseModel):
             pred_fake = self.netD(fake_AB.detach())
             self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
-            # mask_target = torch.tensor([[256 * 0.25]]).to(self.device)
-            # self.loss_mask = self.criterionMask(self.sum_gate[stream_num], mask_target)
+            if self.opt.add_constraint:
+                mask_target = torch.tensor([[256 * 0.25]]).to(self.device)
+                self.loss_mask = self.criterionMask(self.sum_gate[stream_num], mask_target)
 
             # Real
             # real_AB = torch.cat((self.real_A, self.gated_B), 1)
@@ -110,7 +115,8 @@ class SemiPix2PixModel(BaseModel):
 
             self.loss_D.backward(retain_graph=True, create_graph=True)
 
-            # self.loss_mask.backward(retain_graph=True, create_graph=True)
+            if self.opt.add_constraint:
+                self.loss_mask.backward(retain_graph=True, create_graph=True)
 
 
     def backward_G(self):
