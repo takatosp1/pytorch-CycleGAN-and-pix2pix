@@ -11,7 +11,7 @@ class BaseModel():
     @staticmethod
     def modify_commandline_options(parser, is_train):
         return parser
-    
+
     def name(self):
         return 'BaseModel'
 
@@ -75,7 +75,10 @@ class BaseModel():
         visual_ret = OrderedDict()
         for name in self.visual_names:
             if isinstance(name, str):
-                visual_ret[name] = getattr(self, name)
+                tmp = getattr(self, name)
+                if type(tmp) == list:
+                    for i in range(len(tmp)):
+                        visual_ret['{}_{}'.format(name, i)] = tmp[i]
         return visual_ret
 
     # return traning losses/errors. train.py will print out these errors as debugging information

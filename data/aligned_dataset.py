@@ -94,7 +94,11 @@ class AlignedDataset(BaseDataset):
             B = tmp.unsqueeze(0)
 
         if self.opt.aligned_random_crop:
-            A = self._aligned_random_crop(A)
+            list_A = []
+            for num_stream in range(self.opt.num_stream):
+                tmp = self._aligned_random_crop(A)
+                list_A.append(tmp)
+            A = list_A
 
         return {'A': A, 'B': B,
                 'A_paths': AB_path, 'B_paths': AB_path}

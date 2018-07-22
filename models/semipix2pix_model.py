@@ -63,49 +63,62 @@ class SemiPix2PixModel(BaseModel):
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
-        self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        self.real_B = []
+        for stream_num in range(self.opt.num_stream):
+            self.real_B.append(
+                input['B' if AtoB else 'A'][stream_num].to(self.device))
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
-        self.fake_B, self.gate = self.netG(self.real_A, self.real_B)
+        self.fake_B = []
+        self.gate = []
+        for stream_num in range(self.opt.num_stream):
+            fake_B, gate = \
+                self.netG(self.real_A, self.real_B[stream_num])
+            self.fake_B.append(fake_B)
+            self.gate.append(gate)
         # TODO do we need a mask on the GT
         # self.fake_B, self.gate, self.gated_B = self.netG(self.real_A, self.real_B)
 
     def backward_D(self):
         # Fake
         # stop backprop to the generator by detaching fake_B
-        fake_AB = self.fake_AB_pool.query(torch.cat((self.real_A, self.fake_B), 1))
-        pred_fake = self.netD(fake_AB.detach())
-        self.loss_D_fake = self.criterionGAN(pred_fake, False)
+        for stream_num in range(self.opt.num_stream):
+            fake_AB = self.fake_AB_pool.query(
+                torch.cat((self.real_A, self.fake_B[stream_num]), 1))
+            pred_fake = self.netD(fake_AB.detach())
+            self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
-        # Real
-        # real_AB = torch.cat((self.real_A, self.gated_B), 1)
-        # TODO do we need a mask on the GT
-        real_AB = torch.cat((self.real_A, self.real_B), 1)
-        pred_real = self.netD(real_AB)
-        self.loss_D_real = self.criterionGAN(pred_real, True)
+            # Real
+            # real_AB = torch.cat((self.real_A, self.gated_B), 1)
+            # TODO do we need a mask on the GT
+            real_AB = torch.cat((self.real_A, self.real_B[stream_num]), 1)
+            pred_real = self.netD(real_AB)
+            self.loss_D_real = self.criterionGAN(pred_real, True)
 
-        # Combined loss
-        self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+            # Combined loss
+            self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
 
-        self.loss_D.backward(retain_graph=True)
+            self.loss_D.backward(retain_graph=True, create_graph=True)
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
-        fake_AB = torch.cat((self.real_A, self.fake_B), 1)
-        pred_fake = self.netD(fake_AB)
-        self.loss_G_GAN = self.criterionGAN(pred_fake, True)
+        for stream_num in range(self.opt.num_stream):
+            fake_AB = torch.cat((self.real_A, self.fake_B[stream_num]), 1)
+            pred_fake = self.netD(fake_AB)
+            self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
-        # Second, G(A) = B
-        # self.loss_G_L1 = self.criterionL1(self.fake_B, self.gated_B) * self.opt.lambda_L1
-        self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_B) * self.opt.lambda_L1
+            # Second, G(A) = B
+            # self.loss_G_L1 = self.criterionL1(self.fake_B, self.gated_B) * self.opt.lambda_L1
+            self.loss_G_L1 = self.criterionL1(
+                self.fake_B[stream_num], self.real_B[stream_num]) * self.opt.lambda_L1
 
-        # TODO do we need a mask on the GT
-        # self.loss_G_L1 = torch.mean(torch.abs(self.fake_B - self.gated_B) * self.opt.lambda_L1)
+            # TODO do we need a mask on the GT
+            # self.loss_G_L1 = torch.mean(torch.abs(self.fake_B - self.gated_B) * self.opt.lambda_L1)
 
-        self.loss_G = self.loss_G_GAN + self.loss_G_L1
+            self.loss_G = self.loss_G_GAN + self.loss_G_L1
 
-        self.loss_G.backward()
+            self.loss_G.backward(retain_graph=True, create_graph=True)
 
     def optimize_parameters(self):
         self.forward()
