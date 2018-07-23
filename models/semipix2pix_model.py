@@ -67,9 +67,12 @@ class SemiPix2PixModel(BaseModel):
         AtoB = self.opt.which_direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = []
+        self.real_gate = []
         for stream_num in range(self.opt.num_stream):
             self.real_B.append(
                 input['B' if AtoB else 'A'][stream_num].clone().to(self.device))
+            if self.opt.use_gt_mask:
+                self.real_gate.append(input[""][stream_num].clone().to(self.device))
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -79,10 +82,10 @@ class SemiPix2PixModel(BaseModel):
         for stream_num in range(self.opt.num_stream):
             if self.opt.add_constraint:
                 fake_B, gate, sum_gate = \
-                    self.netG(self.real_A, self.real_B[stream_num], constraint=True)
+                    self.netG(self.real_A, self.real_B[stream_num], self.real_gate[stream_num], constraint=True)
             else:
                 fake_B, gate = \
-                    self.netG(self.real_A, self.real_B[stream_num], constraint=False)
+                    self.netG(self.real_A, self.real_B[stream_num], self.real_gate[stream_num], constraint=False)
             self.fake_B.append(fake_B.clone())
             self.gate.append(gate.clone())
             if self.opt.add_constraint:

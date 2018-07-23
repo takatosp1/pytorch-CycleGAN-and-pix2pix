@@ -3,6 +3,7 @@ import random
 import torchvision.transforms as transforms
 import torch
 import random
+import numpy as np
 from data.base_dataset import BaseDataset
 from data.image_folder import make_dataset
 from PIL import Image
@@ -95,12 +96,15 @@ class AlignedDataset(BaseDataset):
 
         if self.opt.aligned_random_crop:
             list_A = []
+            list_gate = []
             for num_stream in range(self.opt.num_stream):
-                tmp = self._aligned_random_crop(A.clone())
+                tmp, gate_tmp = self._aligned_random_crop(A.clone())
                 list_A.append(tmp)
+                list_gate.append(gate_tmp)
             A = list_A
+            gate = list_gate
 
-        return {'A': A, 'B': B,
+        return {'A': A, 'B': B, 'gate': gate,
                 'A_paths': AB_path, 'B_paths': AB_path}
 
     def __len__(self):
@@ -119,15 +123,22 @@ class AlignedDataset(BaseDataset):
         w = img.shape[2]
         h_1 = random.randint(1, h // 2 - 1)
         w_1 = random.randint(1, w // 2 - 1)
+        gate = np.zeros((h, w, 1))
 
         try:
             img[:, :h_1, :] = fake_A[:, :h_1, :]
             img[:, :, :w_1] = fake_A[:, :, :w_1]
             img[:, h_1 + h // 2:, :] = fake_A[:, h_1 + h // 2:, :]
             img[:, :, w_1 + w // 2:] = fake_A[:, :, w_1 + w // 2:]
+            gate[:, :h_1, :] = 0
+            gate[:, :, :w_1] = 0
+            gate[:, h_1 + h // 2:, :] = 0
+            gate[:, :, w_1 + w // 2:] = 0
+
         except Exception:
             print('_aligned_random_crop failed')
             print(h_1)
             print(h // 2)
             print(img.shape)
-        return img
+        gate = transforms.ToTensor()(gate)
+        return img, gate

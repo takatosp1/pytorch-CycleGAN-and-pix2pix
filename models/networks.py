@@ -529,16 +529,19 @@ class GatedGenerator(nn.Module):
         model = nn.Sequential(*model)
         return model
 
-    def forward(self, input_img, ground_truth, constraint=0):
-        gate_real_mid = self.real_stream.forward(input_img)
-        gate_fake_mid = self.fake_stream.forward(ground_truth)
-        # L2 normalized then production -> cosine distance
-        gate_real_mid = F.normalize(gate_real_mid, p=2, dim=1)
-        gate_fake_mid = F.normalize(gate_fake_mid, p=2, dim=1)
-        gate_mid = gate_real_mid * gate_fake_mid
-        gate_mid = torch.sum(gate_mid, dim=1)
-        gate_mid = torch.unsqueeze(gate_mid, 1)
-        gate_out = self.out_gated_stream.forward(gate_mid)
+    def forward(self, input_img, ground_truth, gt_mask=None, constraint=0):
+        if gt_mask is None:
+            gate_real_mid = self.real_stream.forward(input_img)
+            gate_fake_mid = self.fake_stream.forward(ground_truth)
+            # L2 normalized then production -> cosine distance
+            gate_real_mid = F.normalize(gate_real_mid, p=2, dim=1)
+            gate_fake_mid = F.normalize(gate_fake_mid, p=2, dim=1)
+            gate_mid = gate_real_mid * gate_fake_mid
+            gate_mid = torch.sum(gate_mid, dim=1)
+            gate_mid = torch.unsqueeze(gate_mid, 1)
+            gate_out = self.out_gated_stream.forward(gate_mid)
+        else:
+            gate_out = gt_mask
 
         g_down = self.g_down(input_img)
         g_up = self.g_up(g_down)
