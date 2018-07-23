@@ -405,7 +405,7 @@ class GatedGenerator(nn.Module):
 
         model = [nn.ReflectionPad2d(3),
                  nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
-                           bias=use_bias),
+                            bias=use_bias),
                  norm_layer(ngf),
                  nn.ReLU(True)]
 
@@ -468,7 +468,7 @@ class GatedGenerator(nn.Module):
             use_bias = norm_layer == nn.InstanceNorm2d
 
         model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, stride=2,
                            bias=use_bias),
                  norm_layer(ngf),
                  nn.ReLU(True)]
@@ -517,7 +517,7 @@ class GatedGenerator(nn.Module):
         """
 
         model += [nn.Sigmoid()]
-        model += [nn.UpsamplingBilinear2d(scale_factor=n_upsampling**2)]
+        model += [nn.UpsamplingBilinear2d(scale_factor=(n_upsampling**2*2))]
 
         """
         if use_tanh:

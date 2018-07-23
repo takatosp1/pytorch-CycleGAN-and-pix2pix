@@ -100,7 +100,7 @@ class SemiPix2PixModel(BaseModel):
             self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
             if self.opt.add_constraint:
-                mask_target = torch.tensor([[256 * 0.25]]).to(self.device)
+                mask_target = torch.tensor([[16 * 16 * 0.25]]).to(self.device)
                 self.loss_mask = self.criterionMask(self.sum_gate[stream_num], mask_target)
 
             # Real
