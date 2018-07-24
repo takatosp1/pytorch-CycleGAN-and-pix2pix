@@ -72,7 +72,9 @@ class SemiPix2PixModel(BaseModel):
             self.real_B.append(
                 input['B' if AtoB else 'A'][stream_num].clone().to(self.device))
             if self.opt.use_gt_mask:
-                self.real_gate.append(input[""][stream_num].clone().to(self.device))
+                self.real_gate.append(input["gate"][stream_num].clone().to(self.device))
+            else:
+                self.real_gate.append(None)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):

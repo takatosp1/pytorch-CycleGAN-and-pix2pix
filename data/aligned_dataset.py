@@ -141,4 +141,6 @@ class AlignedDataset(BaseDataset):
             print(h // 2)
             print(img.shape)
         gate = transforms.ToTensor()(gate)
+        #gate = torch.from_numpy(gate)
+        gate = gate.type(torch.FloatTensor)
         return img, gate
