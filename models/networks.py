@@ -385,11 +385,12 @@ class PixelDiscriminator(nn.Module):
 
 
 class GatedGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=0):
         super(GatedGenerator, self).__init__()
-        self.real_stream = self._downsample_stream_gate(input_nc, output_nc)
-        self.fake_stream = self._downsample_stream_gate(input_nc, output_nc)
-        self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
+        if not use_gt_mask:
+            self.real_stream = self._downsample_stream_gate(input_nc, output_nc)
+            self.fake_stream = self._downsample_stream_gate(input_nc, output_nc)
+            self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
 
         self.g_down = self._downsample_stream(input_nc, output_nc)
         self.g_up = self._upsample_stream(input_nc, output_nc)
@@ -559,9 +560,9 @@ class GatedGenerator(nn.Module):
             return out, gate_out
 
 
-def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
+def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[], use_gt_mask=0):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
-    netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
+    netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, use_gt_mask=use_gt_mask)
     return init_net(netG, init_type, gpu_ids)

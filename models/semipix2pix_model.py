@@ -38,7 +38,7 @@ class SemiPix2PixModel(BaseModel):
             self.model_names = ['G']
         # load/define networks
         self.netG = networks.define_gated_G(opt.input_nc, opt.output_nc, opt.ngf,
-                                      opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+                                      opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids, opt.use_gt_mask)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
