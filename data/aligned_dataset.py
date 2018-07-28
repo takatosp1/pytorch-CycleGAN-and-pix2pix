@@ -130,10 +130,10 @@ class AlignedDataset(BaseDataset):
             img[:, :, :w_1] = fake_A[:, :, :w_1]
             img[:, h_1 + h // 2:, :] = fake_A[:, h_1 + h // 2:, :]
             img[:, :, w_1 + w // 2:] = fake_A[:, :, w_1 + w // 2:]
-            gate[:, :h_1, :] = 0
-            gate[:, :, :w_1] = 0
-            gate[:, h_1 + h // 2:, :] = 0
-            gate[:, :, w_1 + w // 2:] = 0
+            gate[:, :h_1, :] = 1
+            gate[:, :, :w_1] = 1
+            gate[:, h_1 + h // 2:, :] = 1
+            gate[:, :, w_1 + w // 2:] = 1
 
         except Exception:
             print('_aligned_random_crop failed')
