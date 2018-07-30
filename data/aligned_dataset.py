@@ -123,24 +123,25 @@ class AlignedDataset(BaseDataset):
         w = img.shape[2]
         h_1 = random.randint(1, h // 2 - 1)
         w_1 = random.randint(1, w // 2 - 1)
-        gate = np.zeros((h, w, 1))
+        gate = np.ones((h, w, 1))
+        gate = transforms.ToTensor()(gate)
 
         try:
             img[:, :h_1, :] = fake_A[:, :h_1, :]
             img[:, :, :w_1] = fake_A[:, :, :w_1]
             img[:, h_1 + h // 2:, :] = fake_A[:, h_1 + h // 2:, :]
             img[:, :, w_1 + w // 2:] = fake_A[:, :, w_1 + w // 2:]
-            gate[:, :h_1, :] = 1
-            gate[:, :, :w_1] = 1
-            gate[:, h_1 + h // 2:, :] = 1
-            gate[:, :, w_1 + w // 2:] = 1
+            gate[:, :h_1, :] = 0
+            gate[:, :, :w_1] = 0
+            gate[:, h_1 + h // 2:, :] = 0
+            gate[:, :, w_1 + w // 2:] = 0
 
         except Exception:
             print('_aligned_random_crop failed')
             print(h_1)
             print(h // 2)
             print(img.shape)
-        gate = transforms.ToTensor()(gate)
+        #gate = transforms.ToTensor()(gate)
         #gate = torch.from_numpy(gate)
         gate = gate.type(torch.FloatTensor)
         return img, gate

@@ -546,7 +546,7 @@ class GatedGenerator(nn.Module):
 
         g_down = self.g_down(input_img)
         g_up = self.g_up(g_down)
-
+       
         # out = torch.mm(g_up, gate_out)
         out = g_up * gate_out
 
