@@ -52,6 +52,7 @@ class BaseOptions():
         parser.add_argument('--add_coor', default=0, type=int, help='Add coordinate')
         parser.add_argument('--add_constraint', default=0, type=int, help='Add coordinate')
         parser.add_argument('--use_gt_mask', default=0, type=int, help='Add ground truth mask(for experiment only)')
+        parser.add_argument('--gate_on_gt', default=0, type=int, help='Apply mask on top of grouth truth')
         self.initialized = True
         return parser
 

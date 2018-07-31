@@ -30,7 +30,7 @@ class SemiPix2PixModel(BaseModel):
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
         self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
-        self.visual_names = ['real_A', 'fake_B', 'real_B', 'gate']
+        self.visual_names = ['real_A', 'fake_B', 'real_B', 'real_B_to_comp', 'gate']
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G', 'D']
@@ -78,6 +78,7 @@ class SemiPix2PixModel(BaseModel):
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
+        self.real_B_to_comp = []
         self.fake_B = []
         self.gate = []
         self.sum_gate = []
@@ -92,6 +93,11 @@ class SemiPix2PixModel(BaseModel):
             self.gate.append(gate.clone())
             if self.opt.add_constraint:
                 self.sum_gate.append(sum_gate.clone())
+            if self.opt.gate_on_gt:
+                real_B_mask = self.real_B[stream_num] * gate
+                self.real_B_to_comp.append(real_B_mask.clone())
+            else:
+                self.real_B_to_comp.append(self.real_B[stream_num].clone())
         # TODO do we need a mask on the GT
         # self.fake_B, self.gate, self.gated_B = self.netG(self.real_A, self.real_B)
 
@@ -111,7 +117,7 @@ class SemiPix2PixModel(BaseModel):
             # Real
             # real_AB = torch.cat((self.real_A, self.gated_B), 1)
             # TODO do we need a mask on the GT
-            real_AB = torch.cat((self.real_A, self.real_B[stream_num]), 1)
+            real_AB = torch.cat((self.real_A, self.real_B_to_comp[stream_num]), 1)
             pred_real = self.netD(real_AB)
             self.loss_D_real = self.criterionGAN(pred_real, True)
 
@@ -134,7 +140,7 @@ class SemiPix2PixModel(BaseModel):
             # Second, G(A) = B
             # self.loss_G_L1 = self.criterionL1(self.fake_B, self.gated_B) * self.opt.lambda_L1
             self.loss_G_L1 = self.criterionL1(
-                self.fake_B[stream_num], self.real_B[stream_num]) * self.opt.lambda_L1
+                self.fake_B[stream_num], self.real_B_to_comp[stream_num]) * self.opt.lambda_L1
 
             # TODO do we need a mask on the GT
             # self.loss_G_L1 = torch.mean(torch.abs(self.fake_B - self.gated_B) * self.opt.lambda_L1)
