@@ -387,7 +387,8 @@ class PixelDiscriminator(nn.Module):
 class GatedGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=0):
         super(GatedGenerator, self).__init__()
-        if not use_gt_mask:
+        self.use_gt_mask = use_gt_mask
+        if not self.use_gt_mask:
             self.real_stream = self._downsample_stream_gate(input_nc, output_nc)
             self.fake_stream = self._downsample_stream_gate(input_nc, output_nc)
             self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
@@ -531,7 +532,7 @@ class GatedGenerator(nn.Module):
         return model
 
     def forward(self, input_img, ground_truth, gt_mask=None, constraint=0):
-        if gt_mask is None:
+        if not self.use_gt_mask:
             gate_real_mid = self.real_stream.forward(input_img)
             gate_fake_mid = self.fake_stream.forward(ground_truth)
             # L2 normalized then production -> cosine distance
