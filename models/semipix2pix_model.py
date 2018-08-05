@@ -83,7 +83,7 @@ class SemiPix2PixModel(BaseModel):
         self.fake_B = []
         self.gate = []
         self.sum_gate = []
-        self.gated_A = []
+        self.gated_B = []
         for stream_num in range(self.opt.num_stream):
             if self.opt.add_constraint:
                 fake_B, gate, sum_gate, gated_gt = \
@@ -93,12 +93,12 @@ class SemiPix2PixModel(BaseModel):
                     self.netG(self.real_A, self.real_B[stream_num], self.real_gate[stream_num], constraint=False)
             self.fake_B.append(fake_B.clone())
             self.gate.append(gate.clone())
-            self.gated_A.append(gated_gt)
+            self.gated_B.append(gated_gt)
             if self.opt.add_constraint:
                 self.sum_gate.append(sum_gate.clone())
             if self.opt.gate_on_gt:
-                real_B_mask = self.real_B[stream_num] * self.real_gate[stream_num]
-                self.real_B_to_comp.append(real_B_mask.clone())
+                # real_B_mask = self.real_B[stream_num] * self.real_gate[stream_num]
+                self.real_B_to_comp.append(gated_gt.clone())
             else:
                 self.real_B_to_comp.append(self.real_B[stream_num].clone())
         # TODO do we need a mask on the GT
@@ -109,7 +109,7 @@ class SemiPix2PixModel(BaseModel):
         # stop backprop to the generator by detaching fake_B
         for stream_num in range(self.opt.num_stream):
             fake_AB = self.fake_AB_pool.query(
-                torch.cat((self.gated_A[stream_num], self.fake_B[stream_num]), 1))
+                torch.cat((self.real_A, self.fake_B[stream_num]), 1))
             pred_fake = self.netD(fake_AB.detach())
             self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
@@ -121,7 +121,7 @@ class SemiPix2PixModel(BaseModel):
             # real_AB = torch.cat((self.real_A, self.gated_B), 1)
             # TODO do we need a mask on the GT
             # real_AB = torch.cat((self.real_A, self.real_B[stream_num]), 1)
-            real_AB = torch.cat((self.gated_A[stream_num], self.real_B[stream_num]), 1)
+            real_AB = torch.cat((self.real_A, self.real_B_to_comp[stream_num]), 1)
             pred_real = self.netD(real_AB)
             self.loss_D_real = self.criterionGAN(pred_real, True)
 
@@ -137,7 +137,7 @@ class SemiPix2PixModel(BaseModel):
     def backward_G(self):
         # First, G(A) should fake the discriminator
         for stream_num in range(self.opt.num_stream):
-            fake_AB = torch.cat((self.gated_A[stream_num], self.fake_B[stream_num]), 1)
+            fake_AB = torch.cat((self.real_A, self.fake_B[stream_num]), 1)
             pred_fake = self.netD(fake_AB)
             self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
