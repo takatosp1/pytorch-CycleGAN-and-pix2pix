@@ -460,7 +460,7 @@ class GatedGenerator(nn.Module):
         return model
 
 
-    def _downsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=2, padding_type='reflect', n_downsampling=4):
+    def _downsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=2, padding_type='reflect', n_downsampling=6):
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
@@ -476,17 +476,17 @@ class GatedGenerator(nn.Module):
                  nn.ReLU(True)]
 
         for i in range(n_downsampling):
-            self.mult = 2**i
-            model += [nn.Conv2d(ngf * self.mult, ngf * self.mult * 2, kernel_size=3,
+            self.mult = 1
+            model += [nn.Conv2d(ngf, ngf, kernel_size=3,
                                 stride=2, padding=1, bias=use_bias),
-                      norm_layer(ngf * self.mult * 2),
+                      norm_layer(ngf),
                       nn.ReLU(True)]
 
-        self.mult = 2**n_downsampling
+        self.mult = 1
         for i in range(n_blocks):
             model += [ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
 
-        # model += [nn.Sigmoid()]
+        model += [nn.ReLU(True)]
 
         model = nn.Sequential(*model)
         return model
@@ -506,59 +506,33 @@ class GatedGenerator(nn.Module):
         down_step = 2 ** (down_step / (n_upsampling + 1))
         step = [int(ngf * self.mult / down_step ** i) for i in range(n_upsampling + 2)]
         print(step)
-        """
-        for i in range(n_upsampling):
-            model += [nn.ConvTranspose2d(step[i], step[i + 1],
-                                         kernel_size=3, stride=2,
-                                         padding=1, output_padding=1,
-                                         bias=use_bias),
-                      norm_layer(int(step[i + 1])),
-                      nn.ReLU(True)]
-        model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(step[n_upsampling], step[n_upsampling + 1], kernel_size=7, padding=0)]
-        """
 
-        model += [nn.Sigmoid()]
-        model += [nn.UpsamplingBilinear2d(scale_factor=(n_upsampling**2*2))]
-
-        """
-        if use_tanh:
-            model += [nn.Tanh()]
-        if use_sigmoid:
-            model += [nn.Sigmoid()]
-        """
+        model += [nn.Upsample(scale_factor=(n_upsampling**2*2*4), mode='nearest')]
 
         model = nn.Sequential(*model)
         return model
 
     def forward(self, input_img, ground_truth, gt_mask=None, constraint=0):
-        if not self.use_gt_mask:
-            gate_real_mid = self.real_stream.forward(input_img)
-            gate_fake_mid = self.fake_stream.forward(ground_truth)
-            # L2 normalized then production -> cosine distance
-            gate_real_mid = F.normalize(gate_real_mid, p=2, dim=1)
-            gate_fake_mid = F.normalize(gate_fake_mid, p=2, dim=1)
-            gate_mid = gate_real_mid * gate_fake_mid
-            gate_mid = torch.sum(gate_mid, dim=1)
-            gate_mid = torch.unsqueeze(gate_mid, 1)
-            gate_out = self.out_gated_stream.forward(gate_mid)
-        else:
-            gate_out = gt_mask
+        gate_real_mid = self.real_stream.forward(input_img)
+        gate_fake_mid = self.fake_stream.forward(ground_truth)
+
+        gate_mid = torch.nn.CosineSimilarity().forward(
+                gate_real_mid, gate_fake_mid
+            ).unsqueeze(1)
+        gate_out = self.out_gated_stream.forward(gate_mid)
 
         g_down = self.g_down(input_img)
         g_up = self.g_up(g_down)
-       
-        # out = torch.mm(g_up, gate_out)
+
         out = g_up * gate_out
 
+        gated_gt = ground_truth * gate_out
 
-        # ground_truth_gate = ground_truth * gate_out
-        # return out, gate_out, ground_truth_gate
         if constraint:
             gate_sum = gate_mid.sum(3).sum(2)
-            return out, gate_out, gate_sum
+            return out, gate_out, gate_sum, gated_gt
         else:
-            return out, gate_out
+            return out, gate_out, gated_gt
 
 
 def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[], use_gt_mask=0):

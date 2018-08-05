@@ -1,5 +1,7 @@
 GPU_ID=1
 CLIP_SIZE=1
+NUM_STREAM=2
+MASK_CONSTRAINT=0
 
 if [ "$#" -ne 0 ]
 then

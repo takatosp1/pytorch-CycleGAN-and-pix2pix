@@ -98,7 +98,8 @@ class AlignedDataset(BaseDataset):
             list_A = []
             list_gate = []
             for num_stream in range(self.opt.num_stream):
-                tmp, gate_tmp = self._aligned_random_crop(A.clone())
+                # tmp, gate_tmp = self._aligned_random_crop(A.clone())
+                tmp, gate_tmp = self._aligned_random_binary_crop(A.clone())
                 list_A.append(tmp)
                 list_gate.append(gate_tmp)
             A = list_A
@@ -145,3 +146,26 @@ class AlignedDataset(BaseDataset):
         #gate = torch.from_numpy(gate)
         gate = gate.type(torch.FloatTensor)
         return img, gate
+
+    def _aligned_random_binary_crop(self, img):
+        # Split the image by 4 parts, then choose one
+        fake_A = self._get_rand_A().clone()
+        h = img.shape[1]
+        w = img.shape[2]
+        h_1 = random.randint(0, 1)
+        w_1 = random.randint(0, 1)
+        h_1 *= h // 2
+        w_1 *= w // 2
+        gate = np.zeros((h, w, 1))
+        gate = transforms.ToTensor()(gate)
+
+        try:
+            fake_A[:, h_1:h_1 + h // 2, w_1:w_1 + w // 2] = \
+                    img[:, h_1:h_1 + h // 2, w_1:w_1 + w // 2]
+            gate[:, h_1:h_1 + h // 2, w_1:w_1 + w // 2] = 1
+        except Exception:
+            print('_aligned_random_crop failed')
+            print(h_1)
+            print(h // 2)
+            print(img.shape)
+        return fake_A, gate
