@@ -98,7 +98,7 @@ class AlignedDataset(BaseDataset):
             list_A = []
             list_gate = []
             for num_stream in range(self.opt.num_stream):
-                # tmp, gate_tmp = self._aligned_random_crop(A.clone())
+                #tmp, gate_tmp = self._aligned_random_crop(A.clone())
                 tmp, gate_tmp = self._aligned_random_binary_crop(A.clone())
                 list_A.append(tmp)
                 list_gate.append(gate_tmp)
