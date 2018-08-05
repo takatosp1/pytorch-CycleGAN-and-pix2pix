@@ -513,13 +513,16 @@ class GatedGenerator(nn.Module):
         return model
 
     def forward(self, input_img, ground_truth, gt_mask=None, constraint=0):
-        gate_real_mid = self.real_stream.forward(input_img)
-        gate_fake_mid = self.fake_stream.forward(ground_truth)
+        if not self.use_gt_mask:
+            gate_real_mid = self.real_stream.forward(input_img)
+            gate_fake_mid = self.fake_stream.forward(ground_truth)
 
-        gate_mid = torch.nn.CosineSimilarity().forward(
-                gate_real_mid, gate_fake_mid
-            ).unsqueeze(1)
-        gate_out = self.out_gated_stream.forward(gate_mid)
+            gate_mid = torch.nn.CosineSimilarity().forward(
+                    gate_real_mid, gate_fake_mid
+                ).unsqueeze(1)
+            gate_out = self.out_gated_stream.forward(gate_mid)
+        else:
+            gate_out = gt_mask
 
         g_down = self.g_down(input_img)
         g_up = self.g_up(g_down)
