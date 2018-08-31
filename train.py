@@ -3,8 +3,6 @@ from options.train_options import TrainOptions
 from data import CreateDataLoader
 from models import create_model
 from util.visualizer import Visualizer
-from torch.nn.modules.module import _addindent
-import numpy as np
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()

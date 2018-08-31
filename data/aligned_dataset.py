@@ -20,9 +20,8 @@ class AlignedDataset(BaseDataset):
         self.dir_AB = os.path.join(opt.dataroot, opt.phase)
         self.AB_paths = sorted(make_dataset(self.dir_AB))
         assert(opt.resize_or_crop == 'resize_and_crop')
-        self.clip_size = opt.clip_size
 
-    def _get_rand_A(self):
+    def get_rand_A(self):
         index = random.randint(0, len(self.AB_paths) - 1)
         AB_path = self.AB_paths[index]
         AB = Image.open(AB_path).convert('RGB')
@@ -53,9 +52,7 @@ class AlignedDataset(BaseDataset):
             A = tmp.unsqueeze(0)
         return A
 
-
-    def __getitem__(self, index_):
-        index = int(index_ / self.clip_size)
+    def __getitem__(self, index):
         AB_path = self.AB_paths[index]
         AB = Image.open(AB_path).convert('RGB')
         w, h = AB.size
@@ -94,78 +91,42 @@ class AlignedDataset(BaseDataset):
             tmp = B[0, ...] * 0.299 + B[1, ...] * 0.587 + B[2, ...] * 0.114
             B = tmp.unsqueeze(0)
 
-        if self.opt.aligned_random_crop:
-            list_A = []
-            list_gate = []
-            for num_stream in range(self.opt.num_stream):
-                #tmp, gate_tmp = self._aligned_random_crop(A.clone())
-                tmp, gate_tmp = self._aligned_random_binary_crop(A.clone())
-                list_A.append(tmp)
-                list_gate.append(gate_tmp)
-            A = list_A
-            gate = list_gate
+        if self.opt.gt_crop:
+            A, gate = self.random_crop(A.clone())
 
-        return {'A': A, 'B': B, 'gate': gate,
-                'A_paths': AB_path, 'B_paths': AB_path}
+            return {'A': A, 'B': B, 'gate': gate,
+                    'A_paths': AB_path, 'B_paths': AB_path}
+        else:
+            return {'A': A, 'B': B,
+                    'A_paths': AB_path, 'B_paths': AB_path}
 
     def __len__(self):
-        return len(self.AB_paths) * self.clip_size
+        return len(self.AB_paths)
 
     def name(self):
         return 'AlignedDataset'
 
-    def _jitter(img):
-        # dimension: C x H x W
-        pass
-
-    def _aligned_random_crop(self, img):
-        fake_A = self._get_rand_A()
-        h = img.shape[1]
-        w = img.shape[2]
-        h_1 = random.randint(1, h // 2 - 1)
-        w_1 = random.randint(1, w // 2 - 1)
-        gate = np.ones((h, w, 1))
-        gate = transforms.ToTensor()(gate)
-
-        try:
-            img[:, :h_1, :] = fake_A[:, :h_1, :]
-            img[:, :, :w_1] = fake_A[:, :, :w_1]
-            img[:, h_1 + h // 2:, :] = fake_A[:, h_1 + h // 2:, :]
-            img[:, :, w_1 + w // 2:] = fake_A[:, :, w_1 + w // 2:]
-            gate[:, :h_1, :] = 0
-            gate[:, :, :w_1] = 0
-            gate[:, h_1 + h // 2:, :] = 0
-            gate[:, :, w_1 + w // 2:] = 0
-
-        except Exception:
-            print('_aligned_random_crop failed')
-            print(h_1)
-            print(h // 2)
-            print(img.shape)
-        #gate = transforms.ToTensor()(gate)
-        #gate = torch.from_numpy(gate)
-        gate = gate.type(torch.FloatTensor)
-        return img, gate
-
-    def _aligned_random_binary_crop(self, img):
+    def random_crop(self, img, ratio=4):
         # Split the image by 4 parts, then choose one
-        fake_A = self._get_rand_A().clone()
+        img = img.clone()
         h = img.shape[1]
         w = img.shape[2]
-        h_1 = random.randint(0, 1)
-        w_1 = random.randint(0, 1)
-        h_1 *= h // 2
-        w_1 *= w // 2
+
         gate = np.zeros((h, w, 1))
         gate = transforms.ToTensor()(gate)
-
-        try:
-            fake_A[:, h_1:h_1 + h // 2, w_1:w_1 + w // 2] = \
-                    img[:, h_1:h_1 + h // 2, w_1:w_1 + w // 2]
-            gate[:, h_1:h_1 + h // 2, w_1:w_1 + w // 2] = 1
-        except Exception:
-            print('_aligned_random_crop failed')
-            print(h_1)
-            print(h // 2)
-            print(img.shape)
-        return fake_A, gate
+        for i in range(ratio):
+            fake_A = self.get_rand_A()
+            h_1 = random.randint(0, ratio - 1)
+            w_1 = random.randint(0, ratio - 1)
+            h_1 *= h // ratio
+            w_1 *= w // ratio
+            try:
+                img[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio] = \
+                        fake_A[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio]
+                gate[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio] = 1
+            except Exception:
+                print('_aligned_random_crop failed')
+                print(h_1)
+                print(h // ratio)
+                print(img.shape)
+        return img, gate

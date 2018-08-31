@@ -3,8 +3,8 @@ import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
-import math
 import torch.nn.functional as F
+import math
 
 ###############################################################################
 # Helper Functions
@@ -62,16 +62,16 @@ def init_weights(net, init_type='normal', gain=0.02):
     net.apply(init_func)
 
 
-def init_net(net, init_type='normal', gpu_ids=[]):
+def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
         net.to(gpu_ids[0])
         net = torch.nn.DataParallel(net, gpu_ids)
-    init_weights(net, init_type)
+    init_weights(net, init_type, gain=init_gain)
     return net
 
 
-def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
@@ -85,11 +85,11 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
-    return init_net(netG, init_type, gpu_ids)
+    return init_net(netG, init_type, init_gain, gpu_ids)
 
 
 def define_D(input_nc, ndf, which_model_netD,
-             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[]):
+             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
     netD = None
     norm_layer = get_norm_layer(norm_type=norm)
 
@@ -102,7 +102,7 @@ def define_D(input_nc, ndf, which_model_netD,
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
                                   which_model_netD)
-    return init_net(netD, init_type, gpu_ids)
+    return init_net(netD, init_type, init_gain, gpu_ids)
 
 
 ##############################################################################
@@ -385,16 +385,67 @@ class PixelDiscriminator(nn.Module):
 
 
 class GatedGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=0):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
+            use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=0,
+            duo_att_ratio=1):
         super(GatedGenerator, self).__init__()
         self.use_gt_mask = use_gt_mask
         if not self.use_gt_mask:
-            self.real_stream = self._downsample_stream_gate(input_nc, output_nc)
-            self.fake_stream = self._downsample_stream_gate(input_nc, output_nc)
+            self.real_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
+            self.fake_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
             self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
 
         self.g_down = self._downsample_stream(input_nc, output_nc)
         self.g_up = self._upsample_stream(input_nc, output_nc)
+        self.duo_att_ratio = duo_att_ratio
+
+        self._add_duo_att(self.out_dim, self.out_dim // self.duo_att_ratio, norm_layer)
+
+    def _add_duo_att(self, d1, d2, norm_layer):
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        # B d_l H W
+        left_conv1_stream = [
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias
+            ),
+            norm_layer(d2),
+        ]
+        self.left_conv1_stream = nn.Sequential(*left_conv1_stream)
+
+        # B d_l H W
+        left_conv2_stream = [
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias
+            ),
+            norm_layer(d2),
+            nn.ReLU(inplace=True),
+        ]
+        self.left_conv2_stream = nn.Sequential(*left_conv2_stream)
+
+        # B H W d_l
+        right_conv1_stream = [
+            # B d_r H W
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias),
+            norm_layer(d2),
+        ]
+        self.right_conv1_stream = nn.Sequential(*right_conv1_stream)
+
+        # B d_r H W
+        right_conv2_stream = [
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias),
+            # B d_r H W
+            norm_layer(d2),
+            nn.ReLU(inplace=True),
+        ]
+        self.right_conv2_stream = nn.Sequential(*right_conv2_stream)
+
+
 
     def _downsample_stream(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', n_downsampling=2):
         self.input_nc = input_nc
@@ -460,7 +511,7 @@ class GatedGenerator(nn.Module):
         return model
 
 
-    def _downsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=2, padding_type='reflect', n_downsampling=6):
+    def _downsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=2, padding_type='reflect', n_downsampling=4):
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
@@ -489,7 +540,7 @@ class GatedGenerator(nn.Module):
         model += [nn.ReLU(True)]
 
         model = nn.Sequential(*model)
-        return model
+        return model, ngf * self.mult
 
 
     def _upsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, padding_type='reflect', n_upsampling=4, use_tanh=True, use_sigmoid=False):
@@ -502,27 +553,27 @@ class GatedGenerator(nn.Module):
             use_bias = norm_layer == nn.InstanceNorm2d
 
         model = []
-        down_step = math.log(ngf * self.mult, 2)
-        down_step = 2 ** (down_step / (n_upsampling + 1))
-        step = [int(ngf * self.mult / down_step ** i) for i in range(n_upsampling + 2)]
-        print(step)
-
-        model += [nn.Upsample(scale_factor=(n_upsampling**2*2*4), mode='nearest')]
+        model += [nn.Upsample(scale_factor=(n_upsampling ** 2 * 2 * 1), mode='nearest')]
 
         model = nn.Sequential(*model)
         return model
 
-    def forward(self, input_img, ground_truth, gt_mask=None, constraint=0):
-        if not self.use_gt_mask:
+
+    def forward(self, input_img, ground_truth, gt_mask=None, use_area_constraint=0):
+        if self.use_gt_mask:
+            gate_out = gt_mask
+        else:
             gate_real_mid = self.real_stream.forward(input_img)
             gate_fake_mid = self.fake_stream.forward(ground_truth)
 
+            gate_real_mid, gate_fake_mid = self._duo_forward(
+                gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8
+            )
+
             gate_mid = torch.nn.CosineSimilarity().forward(
-                    gate_real_mid, gate_fake_mid
+                    gate_real_mid, gate_fake_mid,
                 ).unsqueeze(1)
             gate_out = self.out_gated_stream.forward(gate_mid)
-        else:
-            gate_out = gt_mask
 
         g_down = self.g_down(input_img)
         g_up = self.g_up(g_down)
@@ -531,16 +582,59 @@ class GatedGenerator(nn.Module):
 
         gated_gt = ground_truth * gate_out
 
-        if constraint:
+        if use_area_constraint:
             gate_sum = gate_mid.sum(3).sum(2)
             return out, gate_out, gate_sum, gated_gt
         else:
             return out, gate_out, gated_gt
 
+    def _duo_forward(self, l, r, d2, h, w):
+        # -----------------------------------
+        # B d_l d_r
+        self.left_conv1 = self.left_conv1_stream(l)
+        self.right_conv1 = self.right_conv1_stream(r)
+        self.mul = torch.matmul(
+            self.left_conv1.view(1, d2, -1),
+            self.right_conv1.view(1, d2, -1).permute(0, 2, 1).contiguous()
+        )
 
-def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[], use_gt_mask=0):
+        # -----------------------------------
+        # B d_l d_r
+        # B d_l d_r
+        self.norm_mul = torch.sqrt(F.relu(self.mul)) - torch.sqrt(F.relu(-self.mul))
+        self.norm_mul = torch.mul(self.norm_mul, 1.0 / d2)
+
+        # B d_r d_l
+        self.left_softmax = nn.Softmax(dim=2)(self.norm_mul.permute(0, 2, 1).contiguous())
+        # B d_l d_r
+        self.right_softmax = nn.Softmax(dim=2)(self.norm_mul)
+
+        # -----------------------------------
+        # B d_l HxW
+        self.left_conv2 = self.left_conv2_stream(l).reshape(1, d2, -1)
+        # B d_r HxW
+        self.left_out = torch.matmul(
+            self.left_softmax,
+            self.left_conv2
+        )
+        self.left_out = l.add(self.left_out.view(1, d2, h, w))
+        self.left_out = nn.ReLU(inplace=True)(self.left_out)
+
+        # B d_r HxW
+        self.right_conv2 = self.right_conv2_stream(r).reshape(1, d2, -1)
+        # B d_l HxW
+        self.right_out = torch.matmul(
+            self.right_softmax,
+            self.right_conv2
+        )
+        self.right_out = r.add(self.right_out.view(1, d2, h, w))
+        self.right_out = nn.ReLU(inplace=True)(self.right_out)
+        return self.left_out, self.right_out
+
+
+def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], use_gt_mask=0):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
     netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, use_gt_mask=use_gt_mask)
-    return init_net(netG, init_type, gpu_ids)
+    return init_net(netG, init_type, init_gain, gpu_ids)

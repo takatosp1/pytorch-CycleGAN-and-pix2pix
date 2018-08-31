@@ -26,7 +26,7 @@ class BaseOptions():
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
         parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | aligned | single]')
         parser.add_argument('--model', type=str, default='cycle_gan',
-                                 help='chooses which model to use. cycle_gan, pix2pix, test')
+                            help='chooses which model to use. cycle_gan, pix2pix, test')
         parser.add_argument('--which_direction', type=str, default='AtoB', help='AtoB or BtoA')
         parser.add_argument('--nThreads', default=4, type=int, help='# threads for loading data')
         parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
@@ -35,24 +35,20 @@ class BaseOptions():
         parser.add_argument('--display_winsize', type=int, default=256, help='display window size')
         parser.add_argument('--display_id', type=int, default=1, help='window id of the web display')
         parser.add_argument('--display_server', type=str, default="http://localhost", help='visdom server of the web display')
+        parser.add_argument('--display_env', type=str, default='main', help='visdom display environment name (default is "main")')
         parser.add_argument('--display_port', type=int, default=8097, help='visdom port of the web display')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
-        parser.add_argument('--max_dataset_size', type=int, default=float("inf"),
-                                 help='Maximum number of samples allowed per dataset. If the dataset directory contains more than max_dataset_size, only a subset is loaded.')
+        parser.add_argument('--max_dataset_size', type=int, default=float("inf"), help='Maximum number of samples allowed per dataset. If the dataset directory contains more than max_dataset_size, only a subset is loaded.')
         parser.add_argument('--resize_or_crop', type=str, default='resize_and_crop', help='scaling and cropping of images at load time [resize_and_crop|crop|scale_width|scale_width_and_crop]')
         parser.add_argument('--no_flip', action='store_true', help='if specified, do not flip the images for data augmentation')
         parser.add_argument('--init_type', type=str, default='normal', help='network initialization [normal|xavier|kaiming|orthogonal]')
+        parser.add_argument('--init_gain', type=float, default=0.02, help='scaling factor for normal, xavier and orthogonal.')
         parser.add_argument('--verbose', action='store_true', help='if specified, print more debugging information')
         parser.add_argument('--suffix', default='', type=str, help='customized suffix: opt.name = opt.name + suffix: e.g., {model}_{which_model_netG}_size{loadSize}')
-
-        # The following opts are for Semi-Supervised GAN
-        parser.add_argument('--aligned_random_crop', default=0, type=int, help='0: not crop; 1: crop')
-        parser.add_argument('--clip_size', default=1, type=int, help='Repeatly sample clip_size times')
-        parser.add_argument('--num_stream', default=1, type=int, help='Number of streams, only work with aligned_random_crop')
-        parser.add_argument('--add_coor', default=0, type=int, help='Add coordinate')
-        parser.add_argument('--add_constraint', default=0, type=int, help='Add coordinate')
-        parser.add_argument('--use_gt_mask', default=0, type=int, help='Add ground truth mask(for experiment only)')
-        parser.add_argument('--gate_on_gt', default=1, type=int, help='Apply mask on top of grouth truth')
+        parser.add_argument('--gt_crop', default=True, type=bool, help='Use random cropped parts from other image')
+        parser.add_argument('--use_gt_mask', default=False, type=bool, help='')
+        parser.add_argument('--use_area_constraint', default=False, type=bool, help='')
+        parser.add_argument('--visualize_L1_loss', default=False, type=bool, help='')
         self.initialized = True
         return parser
 
@@ -70,7 +66,7 @@ class BaseOptions():
         model_name = opt.model
         model_option_setter = models.get_option_setter(model_name)
         parser = model_option_setter(parser, self.isTrain)
-        opt, _ = parser.parse_known_args() # parse again with the new defaults
+        opt, _ = parser.parse_known_args()  # parse again with the new defaults
 
         # modify dataset-related parser options
         dataset_name = opt.dataset_mode

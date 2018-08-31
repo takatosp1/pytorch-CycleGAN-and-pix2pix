@@ -11,7 +11,7 @@ class BaseModel():
     @staticmethod
     def modify_commandline_options(parser, is_train):
         return parser
-
+    
     def name(self):
         return 'BaseModel'
 
@@ -75,12 +75,7 @@ class BaseModel():
         visual_ret = OrderedDict()
         for name in self.visual_names:
             if isinstance(name, str):
-                tmp = getattr(self, name)
-                if type(tmp) == list:
-                    for i in range(len(tmp)):
-                        visual_ret['{}_{}'.format(name, i)] = tmp[i]
-                else:
-                    visual_ret[name] = tmp
+                visual_ret[name] = getattr(self, name)
         return visual_ret
 
     # return traning losses/errors. train.py will print out these errors as debugging information
@@ -113,6 +108,9 @@ class BaseModel():
                     (key == 'running_mean' or key == 'running_var'):
                 if getattr(module, key) is None:
                     state_dict.pop('.'.join(keys))
+            if module.__class__.__name__.startswith('InstanceNorm') and \
+               (key == 'num_batches_tracked'):
+                state_dict.pop('.'.join(keys))
         else:
             self.__patch_instance_norm_state_dict(state_dict, getattr(module, key), keys, i + 1)
 
@@ -129,6 +127,9 @@ class BaseModel():
                 # if you are using PyTorch newer than 0.4 (e.g., built from
                 # GitHub source), you can remove str() on self.device
                 state_dict = torch.load(load_path, map_location=str(self.device))
+                if hasattr(state_dict, '_metadata'):
+                    del state_dict._metadata
+
                 # patch InstanceNorm checkpoints prior to 0.4
                 for key in list(state_dict.keys()):  # need to copy keys here because we mutate in loop
                     self.__patch_instance_norm_state_dict(state_dict, net, key.split('.'))
