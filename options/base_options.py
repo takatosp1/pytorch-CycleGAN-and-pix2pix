@@ -49,6 +49,7 @@ class BaseOptions():
         parser.add_argument('--use_gt_mask', default=False, type=bool, help='')
         parser.add_argument('--use_area_constraint', default=False, type=bool, help='')
         parser.add_argument('--visualize_L1_loss', default=False, type=bool, help='')
+        parser.add_argument('--add_position_signal', default=True, type=bool, help='encode position info in duo attention network')
         self.initialized = True
         return parser
 

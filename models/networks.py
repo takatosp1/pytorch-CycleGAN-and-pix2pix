@@ -5,6 +5,7 @@ import functools
 from torch.optim import lr_scheduler
 import torch.nn.functional as F
 import math
+import numpy as np
 
 ###############################################################################
 # Helper Functions
@@ -386,10 +387,11 @@ class PixelDiscriminator(nn.Module):
 
 class GatedGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
-            use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=0,
-            duo_att_ratio=1):
+            use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=False,
+            duo_att_ratio=1, add_position_signal=True):
         super(GatedGenerator, self).__init__()
         self.use_gt_mask = use_gt_mask
+        self.add_position_signal = add_position_signal
         if not self.use_gt_mask:
             self.real_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
             self.fake_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
@@ -565,6 +567,9 @@ class GatedGenerator(nn.Module):
         else:
             gate_real_mid = self.real_stream.forward(input_img)
             gate_fake_mid = self.fake_stream.forward(ground_truth)
+            if self.add_position_signal: # add positions (todo): could also try using different position with different flags.
+                gate_real_mid = gate_real_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_real_mid.size()), 1, 128))
+                gate_fake_mid = gate_fake_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_fake_mid.size()), 1, 128))
 
             gate_real_mid, gate_fake_mid = self._duo_forward(
                 gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8
@@ -587,6 +592,32 @@ class GatedGenerator(nn.Module):
             return out, gate_out, gate_sum, gated_gt
         else:
             return out, gate_out, gated_gt
+
+    def _position_signal_nd_numpy(self, tensor_size, min_timescale=1.0, max_timescale=1.0e4):
+        # tensor_size = [batch, channel, d_1, d_2,.., d_n], in image case n=2
+        num_dims = len(tensor_size)-2 # minus batch dim and channel dim
+        channels = tensor_size[1]
+        num_timescales = channels // (num_dims * 2)
+        log_timescale_increment = (
+                math.log(float(max_timescale) / float(min_timescale)) /
+                (num_timescales - 1))
+        inv_timescales = min_timescale * np.exp(np.arange(num_timescales * 1.0) * - log_timescale_increment)
+        x = np.zeros(tuple(tensor_size)).astype(np.float32)
+        for dim in range(num_dims):
+            dim_size = tensor_size[dim+2]
+            position = np.arange(dim_size * 1.0)
+            scaled_time = np.matmul(inv_timescales[:, np.newaxis], position[np.newaxis, :])
+            signal = np.concatenate((np.sin(scaled_time), np.cos(scaled_time)), axis=0)
+            prepad = dim * 2 * num_timescales
+            postpad = channels - (dim + 1) * 2 * num_timescales
+            signal = np.pad(signal, ((prepad, postpad), (0, 0)), 'constant')
+            signal = np.expand_dims(signal, 0)
+            for _ in range(1 + dim -1):
+                signal = np.expand_dims(signal, -2)
+            for _ in range(num_dims -1 -dim):
+                signal = np.expand_dims(signal, -1)
+            x += signal
+        return x
 
     def _duo_forward(self, l, r, d2, h, w):
         # -----------------------------------
@@ -632,9 +663,9 @@ class GatedGenerator(nn.Module):
         return self.left_out, self.right_out
 
 
-def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], use_gt_mask=0):
+def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], use_gt_mask=False, add_position_signal=True):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
-    netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, use_gt_mask=use_gt_mask)
+    netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, use_gt_mask=use_gt_mask, add_position_signal=add_position_signal)
     return init_net(netG, init_type, init_gain, gpu_ids)
