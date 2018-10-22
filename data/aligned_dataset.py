@@ -21,13 +21,16 @@ class AlignedDataset(BaseDataset):
         self.AB_paths = sorted(make_dataset(self.dir_AB))
         assert(opt.resize_or_crop == 'resize_and_crop')
 
-    def get_rand_A(self):
+    def get_rand_A(self, which='A'):
         index = random.randint(0, len(self.AB_paths) - 1)
         AB_path = self.AB_paths[index]
         AB = Image.open(AB_path).convert('RGB')
         w, h = AB.size
         w2 = int(w / 2)
-        A = AB.crop((0, 0, w2, h)).resize((self.opt.loadSize, self.opt.loadSize), Image.BICUBIC)
+        if which=='A':
+            A = AB.crop((0, 0, w2, h)).resize((self.opt.loadSize, self.opt.loadSize), Image.BICUBIC)
+        elif which =='B':
+            A = AB.crop((w2, 0, w, h)).resize((self.opt.loadSize, self.opt.loadSize), Image.BICUBIC)
         A = transforms.ToTensor()(A)
         w_offset = random.randint(0, max(0, self.opt.loadSize - self.opt.fineSize - 1))
         h_offset = random.randint(0, max(0, self.opt.loadSize - self.opt.fineSize - 1))
@@ -92,7 +95,10 @@ class AlignedDataset(BaseDataset):
             B = tmp.unsqueeze(0)
 
         if self.opt.gt_crop:
-            A, gate = self.random_crop(A.clone())
+            if self.opt.which_crop =='A':
+                A, gate = self.random_crop(A.clone(), 'A')
+            elif self.opt.which_crop =='B':
+                B, gate = self.random_crop(B.clone(), 'B')
 
             return {'A': A, 'B': B, 'gate': gate,
                     'A_paths': AB_path, 'B_paths': AB_path}
@@ -106,7 +112,7 @@ class AlignedDataset(BaseDataset):
     def name(self):
         return 'AlignedDataset'
 
-    def random_crop(self, img, ratio=4):
+    def random_crop(self, img, which='A', ratio=4):
         # Split the image by 4 parts, then choose one
         img = img.clone()
         h = img.shape[1]
@@ -115,7 +121,7 @@ class AlignedDataset(BaseDataset):
         gate = np.zeros((h, w, 1))
         gate = transforms.ToTensor()(gate)
         for i in range(ratio):
-            fake_A = self.get_rand_A()
+            fake_A = self.get_rand_A(which)
             h_1 = random.randint(0, ratio - 1)
             w_1 = random.randint(0, ratio - 1)
             h_1 *= h // ratio
