@@ -45,12 +45,12 @@ class BaseOptions():
         parser.add_argument('--init_gain', type=float, default=0.02, help='scaling factor for normal, xavier and orthogonal.')
         parser.add_argument('--verbose', action='store_true', help='if specified, print more debugging information')
         parser.add_argument('--suffix', default='', type=str, help='customized suffix: opt.name = opt.name + suffix: e.g., {model}_{which_model_netG}_size{loadSize}')
-        parser.add_argument('--gt_crop', default=True, type=bool, help='Use random cropped parts from other image')
+        parser.add_argument('--gt_crop', default=1, type=int, help='Use random cropped parts from other image')
         parser.add_argument('--which_crop', default='A', type=str, help='A or B, only activated when gt_crop is true')
-        parser.add_argument('--use_gt_mask', default=False, type=bool, help='')
-        parser.add_argument('--use_area_constraint', default=False, type=bool, help='')
-        parser.add_argument('--visualize_L1_loss', default=False, type=bool, help='')
-        parser.add_argument('--add_position_signal', default=True, type=bool, help='encode position info in duo attention network')
+        parser.add_argument('--use_gt_mask', default=0, type=int, help='')
+        parser.add_argument('--use_area_constraint', default=0, type=int, help='')
+        parser.add_argument('--visualize_L1_loss', default=0, type=int, help='')
+        parser.add_argument('--add_position_signal', default=1, type=int, help='encode position info in duo attention network')
         self.initialized = True
         return parser
 
