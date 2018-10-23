@@ -95,6 +95,11 @@ class AlignedDataset(BaseDataset):
             B = tmp.unsqueeze(0)
 
         if self.opt.gt_crop:
+            if self.opt.random_crop == 'random_multiblocks_crop':
+                self.random_crop = self.random_multiblocks_crop
+            elif self.opt.random_crop == 'random_oneblock_crop':
+                self.random_crop = self.random_oneblock_crop
+
             if self.opt.which_crop =='A':
                 A, gate = self.random_crop(A.clone(), 'A')
             elif self.opt.which_crop =='B':
@@ -112,13 +117,13 @@ class AlignedDataset(BaseDataset):
     def name(self):
         return 'AlignedDataset'
 
-    def random_crop(self, img, which='A', ratio=4):
+    def random_multiblocks_crop(self, img, which='A', ratio=4):
         # Split the image by 4 parts, then choose one
         img = img.clone()
         h = img.shape[1]
         w = img.shape[2]
 
-        gate = np.zeros((h, w, 1))
+        gate = np.ones((h, w, 1))
         gate = transforms.ToTensor()(gate)
         for i in range(ratio):
             fake_A = self.get_rand_A(which)
@@ -129,10 +134,33 @@ class AlignedDataset(BaseDataset):
             try:
                 img[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio] = \
                         fake_A[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio]
-                gate[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio] = 1
+                gate[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio] = 0 # 1 means true
             except Exception:
                 print('_aligned_random_crop failed')
                 print(h_1)
                 print(h // ratio)
                 print(img.shape)
+        return img, gate
+
+    def random_oneblock_crop(self, img, which='A',  oneD_ratio=2):
+        # Split the image by 4 parts, then choose one
+        fake_A = self.get_rand_A(which)
+        h = img.shape[1]
+        w = img.shape[2]
+        h_1 = random.randint(0, oneD_ratio-1)
+        w_1 = random.randint(0, oneD_ratio-1)
+        h_1 *= h // oneD_ratio
+        w_1 *= w // oneD_ratio
+        gate = np.ones((h, w, 1))
+        gate = transforms.ToTensor()(gate)
+
+        try:
+            img[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio] = \
+                    fake_A[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio]
+            gate[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio] = 0 #1 menas true
+        except Exception:
+            print('_aligned_random_crop failed')
+            print(h_1)
+            print(h // oneD_ratio)
+            print(img.shape)
         return img, gate

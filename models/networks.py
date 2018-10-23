@@ -396,12 +396,12 @@ class GatedGenerator(nn.Module):
             self.real_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
             self.fake_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
             self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
+            self.duo_att_ratio = duo_att_ratio
+            self._add_duo_att(self.out_dim, self.out_dim // self.duo_att_ratio, norm_layer)
 
         self.g_down = self._downsample_stream(input_nc, output_nc)
         self.g_up = self._upsample_stream(input_nc, output_nc)
-        self.duo_att_ratio = duo_att_ratio
 
-        self._add_duo_att(self.out_dim, self.out_dim // self.duo_att_ratio, norm_layer)
 
     def _add_duo_att(self, d1, d2, norm_layer):
         if type(norm_layer) == functools.partial:
@@ -563,7 +563,7 @@ class GatedGenerator(nn.Module):
 
     def forward(self, input_img, ground_truth, gt_mask=None, use_area_constraint=0):
         if self.use_gt_mask:
-            gate_out = gt_mask
+            gate_out = gt_mask.float()
         else:
             gate_real_mid = self.real_stream.forward(input_img)
             gate_fake_mid = self.fake_stream.forward(ground_truth)
