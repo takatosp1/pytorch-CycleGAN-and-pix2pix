@@ -589,9 +589,9 @@ class GatedGenerator(nn.Module):
 
         if use_area_constraint:
             gate_sum = gate_mid.sum(3).sum(2)
-            return out, gate_out, gate_sum, gated_gt
+            return g_up, out, gate_out, gate_sum, gated_gt
         else:
-            return out, gate_out, gated_gt
+            return g_up, out, gate_out, gated_gt
 
     def _position_signal_nd_numpy(self, tensor_size, min_timescale=1.0, max_timescale=1.0e4):
         # tensor_size = [batch, channel, d_1, d_2,.., d_n], in image case n=2

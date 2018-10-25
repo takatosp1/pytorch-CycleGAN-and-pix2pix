@@ -31,6 +31,7 @@ class SemiPix2PixModel(BaseModel):
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         self.visual_names = ['real_A', 'fake_B', 'real_B']
         if self.opt.gt_crop:
+            self.visual_names.append('fake_B_wo_gate')
             self.visual_names.append('real_B_to_comp')
             self.visual_names.append('gate')
             self.visual_names.append('L1')
@@ -82,10 +83,10 @@ class SemiPix2PixModel(BaseModel):
 
     def forward(self):
         if self.opt.use_area_constraint:
-           self.fake_B, self.gate, self.sum_gate, self.gated_gt = \
+            self.fake_B_wo_gate, self.fake_B, self.gate, self.sum_gate, self.gated_gt = \
                     self.netG(self.real_A, self.real_B, self.gate, use_area_constraint=True)
         else:
-            self.fake_B, self.gate, self.gated_gt = \
+            self.fake_B_wo_gate, self.fake_B, self.gate, self.gated_gt = \
                 self.netG(self.real_A, self.real_B, self.gate, use_area_constraint=False)
 
         if self.opt.use_gt_mask:
