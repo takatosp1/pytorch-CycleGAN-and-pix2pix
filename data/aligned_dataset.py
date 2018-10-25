@@ -153,14 +153,19 @@ class AlignedDataset(BaseDataset):
         w_1 *= w // oneD_ratio
         gate = np.ones((h, w, 1))
         gate = transforms.ToTensor()(gate)
+        #gate = np.zeros((h,w,1))
+        #gate = transforms.ToTensor()(gate)
 
         try:
             img[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio] = \
                     fake_A[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio]
             gate[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio] = 0 #1 menas true
+            #fake_A[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio] = img[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio]
+            #gate[:, h_1:h_1 + h // oneD_ratio, w_1:w_1 + w // oneD_ratio] = 1
         except Exception:
             print('_aligned_random_crop failed')
             print(h_1)
             print(h // oneD_ratio)
             print(img.shape)
         return img, gate
+        #return fake_A, gate
