@@ -20,6 +20,8 @@ class AlignedDataset(BaseDataset):
         self.dir_AB = os.path.join(opt.dataroot, opt.phase)
         self.AB_paths = sorted(make_dataset(self.dir_AB))
         assert(opt.resize_or_crop == 'resize_and_crop')
+        if opt.data_seglabel:
+            self.dir_seglabel = os.path.join(opt.dataroot, opt.phase+'_label')
 
     def get_rand_A(self, which='A'):
         index = random.randint(0, len(self.AB_paths) - 1)
@@ -53,7 +55,16 @@ class AlignedDataset(BaseDataset):
         if input_nc == 1:  # RGB to gray
             tmp = A[0, ...] * 0.299 + A[1, ...] * 0.587 + A[2, ...] * 0.114
             A = tmp.unsqueeze(0)
-        return A
+
+        if self.opt.data_seglabel:
+            image_name = AB_path.split('/')[-1].replace('.jpg', '.png')
+            Seg = Image.open(os.path.join(self.dir_seglabel, image_name)).resize((self.opt.loadSize, self.opt.loadSize), Image.NEAREST)
+            Seg = np.array(Seg, dtype="int32")
+            Seg = Seg[h_offset:h_offset + self.opt.fineSize, w_offset:w_offset + self.opt.fineSize]
+        else:
+            Seg = None
+
+        return A, Seg
 
     def __getitem__(self, index):
         AB_path = self.AB_paths[index]
@@ -94,6 +105,14 @@ class AlignedDataset(BaseDataset):
             tmp = B[0, ...] * 0.299 + B[1, ...] * 0.587 + B[2, ...] * 0.114
             B = tmp.unsqueeze(0)
 
+        if self.opt.data_seglabel:
+            image_name = AB_path.split('/')[-1].replace('.jpg', '.png')
+            Seg = Image.open(os.path.join(self.dir_seglabel, image_name)).resize((self.opt.loadSize, self.opt.loadSize), Image.NEAREST)
+            Seg = np.array(Seg, dtype="int32")
+            Seg = Seg[h_offset:h_offset + self.opt.fineSize, w_offset:w_offset + self.opt.fineSize]
+        else:
+            Seg = None
+
         if self.opt.gt_crop:
             if self.opt.random_crop == 'random_multiblocks_crop':
                 self.random_crop = self.random_multiblocks_crop
@@ -101,9 +120,9 @@ class AlignedDataset(BaseDataset):
                 self.random_crop = self.random_oneblock_crop
 
             if self.opt.which_crop =='A':
-                A, gate = self.random_crop(A.clone(), 'A')
+                A, gate = self.random_crop(A.clone(), 'A', Seg)
             elif self.opt.which_crop =='B':
-                B, gate = self.random_crop(B.clone(), 'B')
+                B, gate = self.random_crop(B.clone(), 'B', Seg)
 
             return {'A': A, 'B': B, 'gate': gate,
                     'A_paths': AB_path, 'B_paths': AB_path}
@@ -117,7 +136,7 @@ class AlignedDataset(BaseDataset):
     def name(self):
         return 'AlignedDataset'
 
-    def random_multiblocks_crop(self, img, which='A', ratio=4):
+    def random_multiblocks_crop(self, img, which='A', seg=None, ratio=4):
         # Split the image by 4 parts, then choose one
         img = img.clone()
         h = img.shape[1]
@@ -125,16 +144,26 @@ class AlignedDataset(BaseDataset):
 
         gate = np.ones((h, w, 1))
         gate = transforms.ToTensor()(gate)
-        for i in range(ratio):
-            fake_A = self.get_rand_A(which)
+
+        i=0
+        while i != ratio:
+            fake_A, seg_A = self.get_rand_A(which)
             h_1 = random.randint(0, ratio - 1)
             w_1 = random.randint(0, ratio - 1)
             h_1 *= h // ratio
             w_1 *= w // ratio
             try:
+                if seg is not None:
+                    seg_crop_lab = np.unique(seg[h_1:h_1 + h // ratio, w_1:w_1 + w // ratio].squeeze())
+                    seg_A_crop_lab = np.unique(seg_A[h_1:h_1 + h // ratio, w_1:w_1 + w // ratio].squeeze())
+                    if len(seg_crop_lab) == 1 and len(seg_A_crop_lab) == 1:
+                        if seg_crop_lab[0] == seg_A_crop_lab[0]:
+                            # which means the cropped region label is exactly the same as the random one
+                            continue
                 img[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio] = \
                         fake_A[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio]
                 gate[:, h_1:h_1 + h // ratio, w_1:w_1 + w // ratio] = 0 # 1 means true
+                i += 1
             except Exception:
                 print('_aligned_random_crop failed')
                 print(h_1)
