@@ -384,6 +384,53 @@ class PixelDiscriminator(nn.Module):
     def forward(self, input):
         return self.net(input)
 
+class CoordConv2d(nn.Conv2d):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True, with_r=False):
+        self.with_r = with_r
+        if self.with_r:
+            super(CoordConv2d, self).__init__(in_channels+3, out_channels, kernel_size, stride, padding, dilation, groups, bias)
+        else:
+            super(CoordConv2d, self).__init__(in_channels+2, out_channels, kernel_size, stride, padding, dilation, groups,
+                                         bias)
+
+    def forward(self, input):
+        batch_dim, _, y_dim, x_dim = list(input.size())
+
+        xx_ones = torch.ones(batch_dim, y_dim) # x_dim in coord paper, but I think it's y_dim instead
+        xx_ones = torch.unsqueeze(xx_ones, -1) # [batch_dim, y_dim, 1]
+
+        xx_range= torch.unsqueeze(torch.arange(x_dim), 0) # [1, x_dim]
+        xx_range= xx_range.expand(batch_dim, -1) # [batch_dim, x_dim]
+        xx_range =torch.unsqueeze(xx_range, 1) # [batch_dim, 1, x_dim]
+
+        xx_channel = torch.matmul(xx_ones, xx_range) # [batch, y_dim, x_dim]
+        xx_channel = torch.unsqueeze(xx_channel, 1) # [batch, 1, y_dim, x_dim]
+
+        yy_ones = torch.ones(batch_dim, x_dim) # y_dim in coord paper, but I think it's x_dim instead
+        yy_ones = torch.unsqueeze(yy_ones, 1) # [batch, 1, x_dim]
+
+        yy_range = torch.unsqueeze(torch.arange(y_dim), 0) # [1, y_dim]
+        yy_range = yy_range.expand(batch_dim, -1)  # [batch_dim, y_dim]
+        yy_range = torch.unsqueeze(yy_range, -1)  # [batch_dim, y_dim, 1]
+
+        yy_channel = torch.matmul(yy_range, yy_ones)  # [batch, y_dim, x_dim]
+        yy_channel = torch.unsqueeze(yy_channel, 1)  # [batch, 1, y_dim, x_dim]
+
+        xx_channel = xx_channel/(x_dim-1) * 2 -1
+        yy_channel = yy_channel/(y_dim-1) * 2 -1
+
+        ret = torch.cat((input, xx_channel, yy_channel), 1)
+
+        if self.with_r:
+            rr = torch.sqrt(torch.pow(xx_channel-0.5, 2) + torch.pow(yy_channel-0.5, 2))
+            ret = torch.cat((ret, rr), 1)
+            return F.conv1d(ret, self.weight, self.bias, self.stride,
+                            self.padding, self.dilation, self.groups)
+
+        return F.conv1d(ret, self.weight, self.bias, self.stride,
+                        self.padding, self.dilation, self.groups)
+
 
 class GatedGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
