@@ -404,7 +404,7 @@ class CoordConv2d(nn.Conv2d):
         xx_range= xx_range.expand(batch_dim, -1) # [batch_dim, x_dim]
         xx_range =torch.unsqueeze(xx_range, 1) # [batch_dim, 1, x_dim]
 
-        xx_channel = torch.matmul(xx_ones, xx_range) # [batch, y_dim, x_dim]
+        xx_channel = torch.matmul(xx_ones, xx_range.type(torch.FloatTensor)) # [batch, y_dim, x_dim]
         xx_channel = torch.unsqueeze(xx_channel, 1) # [batch, 1, y_dim, x_dim]
 
         yy_ones = torch.ones(batch_dim, x_dim) # y_dim in coord paper, but I think it's x_dim instead
@@ -414,13 +414,13 @@ class CoordConv2d(nn.Conv2d):
         yy_range = yy_range.expand(batch_dim, -1)  # [batch_dim, y_dim]
         yy_range = torch.unsqueeze(yy_range, -1)  # [batch_dim, y_dim, 1]
 
-        yy_channel = torch.matmul(yy_range, yy_ones)  # [batch, y_dim, x_dim]
+        yy_channel = torch.matmul(yy_range.type(torch.FloatTensor), yy_ones)  # [batch, y_dim, x_dim]
         yy_channel = torch.unsqueeze(yy_channel, 1)  # [batch, 1, y_dim, x_dim]
 
         xx_channel = xx_channel/(x_dim-1) * 2 -1
         yy_channel = yy_channel/(y_dim-1) * 2 -1
 
-        ret = torch.cat((input, xx_channel, yy_channel), 1)
+        ret = torch.cat((input, xx_channel.cuda(), yy_channel.cuda()), 1)
 
         if self.with_r:
             rr = torch.sqrt(torch.pow(xx_channel-0.5, 2) + torch.pow(yy_channel-0.5, 2))
