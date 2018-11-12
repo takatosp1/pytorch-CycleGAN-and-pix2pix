@@ -520,9 +520,23 @@ class GatedGenerator(nn.Module):
             # self.real_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
             # self.fake_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
             self.downsample_gate_model, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
+            for n in range(len(self.downsample_gate_model)):
+                setattr(self, 'downsample_gate_model' + str(n), nn.Sequential(*self.downsample_gate_model[n]))
             self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
             self.duo_att_ratio = duo_att_ratio
             self._add_duo_att(self.out_dim, self.out_dim // self.duo_att_ratio, norm_layer)
+            if self.which_net_mask == 'multiscale1':
+                model = []
+                for i in range(4+1): # todo, option, 1 + n_downsample
+                    model += [nn.ConvTranspose2d(self.out_dim, self.out_dim, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
+                              nn.BatchNorm2d(self.out_dim),
+                              nn.ReLU(True)]
+                    setattr(self, 'upsample_gate_model'+str(i), nn.Sequential(*model))
+                model = [nn.Conv2d(self.out_dim * (1+4+1), self.out_dim, kernel_size=1, stride=1), norm_layer(self.out_dim), nn.ReLU(True)]  # todo, option, n_downsample
+                setattr(self, 'conv_af_upsample_gate', nn.Sequential(*model))
+            if self.which_net_mask == 'multiscale2':
+                model =[nn.Conv2d((1 + 4 + 1), 1, kernel_size=1, stride=1), nn.Sigmoid()]
+                setattr(self, 'conv_af_upsample_gate', nn.Sequential(*model)) # todo, option, n_downsample
 
         self.g_down = self._downsample_stream(input_nc, output_nc)
         self.g_up = self._upsample_stream(input_nc, output_nc)
@@ -665,7 +679,6 @@ class GatedGenerator(nn.Module):
             model += [[ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]]
 
         model += [[nn.ReLU(True)]]
-
         # model = nn.Sequential(*model)
         return model, ngf * self.mult
 
@@ -691,13 +704,13 @@ class GatedGenerator(nn.Module):
         else:
             gate_real_mid_res = [input_img]
             for n in range(len(self.downsample_gate_model)):
-                model = nn.Sequential(*self.downsample_gate_model[n])
+                model = getattr(self, 'downsample_gate_model'+str(n))
                 gate_real_mid_res.append(model.forward(gate_real_mid_res[-1]))
             gate_real_mid_res = gate_real_mid_res[1:]
 
             gate_fake_mid_res = [ground_truth]
             for n in range(len(self.downsample_gate_model)):
-                model = nn.Sequential(*self.downsample_gate_model[n])
+                model = getattr(self, 'downsample_gate_model'+str(n))
                 gate_fake_mid_res.append(model(gate_fake_mid_res[-1]))
             gate_fake_mid_res = gate_fake_mid_res[1:]
 
@@ -731,17 +744,14 @@ class GatedGenerator(nn.Module):
                 gate_real_duo_res.append(gate_real_duo)
                 gate_fake_duo_res.append(gate_fake_duo)
 
-                model = []
-                for i in range(4+1):
-                    model += [nn.ConvTranspose2d(self.out_dim, self.out_dim, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
-                              nn.BatchNorm2d(self.out_dim),
-                              nn.ReLU(True)]
-                    seq = nn.Sequential(*model)
+                for i in range(4+1): # todo, option, 1 + n_downsample
+                    seq = getattr(self, 'upsample_gate_model' + str(i))
                     gate_fake_duo_res[i], gate_real_duo_res[i] = seq.forward(gate_fake_duo_res[i]), seq.forward(gate_real_duo_res[i])
                 gate_fake_duo_res[-1], gate_real_duo_res[-1] = seq.forward(gate_fake_duo_res[-1]), seq.forward(gate_real_duo_res[-1])
 
-                # gate_real_mid = nn.Conv2d(self.out_dim * (1+4+1), self.out_dim, kernel_size=1, stride=1).forward(torch.cat(gate_real_duo_res, 1)) # todo, option, n_downsample
-                # gate_fake_mid = nn.Conv2d(self.out_dim * (1+4+1), self.out_dim, kernel_size=1, stride=1).forward(torch.cat(gate_fake_duo_res, 1))
+                # seq = getattr(self, 'conv_af_upsample_gate')
+                # gate_real_mid = seq.forward(torch.cat(gate_real_duo_res, 1))
+                # gate_fake_mid = seq.forward(torch.cat(gate_fake_duo_res, 1))
                 gate_real_mid = torch.cat(gate_real_duo_res, 1)
                 gate_fake_mid = torch.cat(gate_fake_duo_res, 1)
                 gate_out = torch.nn.CosineSimilarity().forward(gate_real_mid, gate_fake_mid).unsqueeze(1)
@@ -761,8 +771,9 @@ class GatedGenerator(nn.Module):
                 gate_out = self.out_gated_stream.forward(gate_mid)
                 gate_out_res.append(gate_out)
 
-                gate_out = torch.cat(gate_out_res, 1)
-                # gate_out = nn.Sequential(*[nn.Conv2d((1+4+1), 1, kernel_size=1, stride=1), nn.Sigmoid()]).forward(gate_out) #todo, option, n_downsample
+                # gate_out = torch.cat(gate_out_res, 1)
+                # model = getattr(self, 'conv_af_upsample_gate')
+                # gate_out = model.forward(gate_out)
                 n, c, w, h = gate_out.size()
                 gate_out = gate_out.view(n, c, w * h).permute(0, 2, 1)
                 gate_out = F.max_pool1d(gate_out, 1, 1).permute(0, 2, 1).view(n, c, w, h)
@@ -852,9 +863,9 @@ class GatedGenerator(nn.Module):
         return self.left_out, self.right_out
 
 
-def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], use_gt_mask=False, add_position_signal=True):
+def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], use_gt_mask=False, add_position_signal=True, which_net_mask='basic'):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
-    netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, use_gt_mask=use_gt_mask, add_position_signal=add_position_signal)
+    netG = GatedGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, use_gt_mask=use_gt_mask, add_position_signal=add_position_signal, which_net_mask=which_net_mask)
     return init_net(netG, init_type, init_gain, gpu_ids)

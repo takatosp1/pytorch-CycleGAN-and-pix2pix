@@ -22,6 +22,7 @@ class BaseOptions():
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
         parser.add_argument('--which_model_netD', type=str, default='basic', help='selects model to use for netD')
         parser.add_argument('--which_model_netG', type=str, default='resnet_9blocks', help='selects model to use for netG')
+        parser.add_argument('--which_net_mask', type=str, default='basic', help='which kind of gate net, basic, multiscale1, multiscale2')
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if which_model_netD==n_layers')
         parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
