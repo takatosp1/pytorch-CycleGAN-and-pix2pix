@@ -15,7 +15,7 @@ class SemiPix2PixModel(BaseModel):
 
         # changing the default values to match the pix2pix paper
         # (https://phillipi.github.io/pix2pix/)
-        parser.set_defaults(pool_size=0, no_lsgan=True, norm='batch')
+        parser.set_defaults(pool_size=0, no_lsgan=False, norm='batch') # todo (yishi) multiscaleD loss fails bce loss, so use mse loss instead(no_lsgan = False)
         parser.set_defaults(dataset_mode='aligned')
         parser.set_defaults(which_model_netG='unet_256')
         if is_train:
@@ -104,13 +104,19 @@ class SemiPix2PixModel(BaseModel):
             torch.cat((self.real_A, self.fake_B), 1))
         pred_fake = self.netD(fake_AB.detach())
         self.loss_D_fake = self.criterionGAN(pred_fake, False)
-        self.pred_fake = 1 - pred_fake.clone()
+        if isinstance(pred_fake[0], list):
+            self.pred_fake = 1 - pred_fake[-1][-1].clone()
+        else:
+            self.pred_fake = 1 - pred_fake.clone()
 
         # Real
         real_AB = torch.cat((self.real_A, self.real_B), 1)
         pred_real = self.netD(real_AB)
         self.loss_D_real = self.criterionGAN(pred_real, True)
-        self.pred_real = pred_real.clone()
+        if isinstance(pred_real[0], list):
+            self.pred_real = pred_real.clone()
+        else:
+            self.pred_real = pred_real.clone()
 
         self.D = self.pred_fake + self.pred_real
 
