@@ -776,7 +776,7 @@ class GatedGenerator(nn.Module):
                 gate_out = model.forward(gate_out)
                 # n, c, w, h = gate_out.size()
                 # gate_out = gate_out.view(n, c, w * h).permute(0, 2, 1)
-                # gate_out = F.max_pool1d(gate_out, 1, 1).permute(0, 2, 1).view(n, c, w, h)
+                # gate_out = F.max_pool1d(gate_out, 6, 1).permute(0, 2, 1).view(n, 1, w, h)
             else:
                 raise NotImplementedError('mask net name [%s] is not recognized' % self.which_net_mask)
 
