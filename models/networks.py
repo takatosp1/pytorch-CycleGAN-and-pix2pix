@@ -159,11 +159,11 @@ class GANLoss(nn.Module):
                 pred = input_i[-1]
                 target_tensor = self.get_target_tensor(pred, target_is_real)
                 i+=1
-                loss += self.loss(pred, target_tensor)
+                loss += self.loss(pred, target_tensor.cuda())
             return loss
         else:
             target_tensor = self.get_target_tensor(input[-1], target_is_real)
-            return self.loss(input[-1], target_tensor)
+            return self.loss(input[-1], target_tensor.cuda())
 
 
 # Defines the generator that consists of Resnet blocks between a few
@@ -771,12 +771,12 @@ class GatedGenerator(nn.Module):
                 gate_out = self.out_gated_stream.forward(gate_mid)
                 gate_out_res.append(gate_out)
 
-                # gate_out = torch.cat(gate_out_res, 1)
-                # model = getattr(self, 'conv_af_upsample_gate')
-                # gate_out = model.forward(gate_out)
-                n, c, w, h = gate_out.size()
-                gate_out = gate_out.view(n, c, w * h).permute(0, 2, 1)
-                gate_out = F.max_pool1d(gate_out, 1, 1).permute(0, 2, 1).view(n, c, w, h)
+                gate_out = torch.cat(gate_out_res, 1)
+                model = getattr(self, 'conv_af_upsample_gate')
+                gate_out = model.forward(gate_out)
+                # n, c, w, h = gate_out.size()
+                # gate_out = gate_out.view(n, c, w * h).permute(0, 2, 1)
+                # gate_out = F.max_pool1d(gate_out, 1, 1).permute(0, 2, 1).view(n, c, w, h)
             else:
                 raise NotImplementedError('mask net name [%s] is not recognized' % self.which_net_mask)
 
