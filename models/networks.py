@@ -340,6 +340,7 @@ class UnetSkipConnectionBlock(nn.Module):
         else:
             return torch.cat([x, self.model(x)], 1)
 
+
 class MultiscaleDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d,
                  use_sigmoid=False, num_D=3, getIntermFeat=False):
@@ -510,13 +511,15 @@ class CoordConv2d(nn.Conv2d):
 class GatedGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
             use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=False,
-            duo_att_ratio=1, add_position_signal=True):
+            duo_att_ratio=1, add_position_signal=True, which_net_mask='basic'):
         super(GatedGenerator, self).__init__()
         self.use_gt_mask = use_gt_mask
         self.add_position_signal = add_position_signal
+        self.which_net_mask = which_net_mask
         if not self.use_gt_mask:
-            self.real_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
-            self.fake_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
+            # self.real_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
+            # self.fake_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
+            self.downsample_gate_model, self.out_dim = self._downsample_stream_gate(input_nc, output_nc)
             self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, use_sigmoid=True, use_tanh=False)
             self.duo_att_ratio = duo_att_ratio
             self._add_duo_att(self.out_dim, self.out_dim // self.duo_att_ratio, norm_layer)
@@ -644,26 +647,26 @@ class GatedGenerator(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        model = [nn.ReflectionPad2d(3),
+        model = [[nn.ReflectionPad2d(3),
                  nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, stride=2,
                            bias=use_bias),
                  norm_layer(ngf),
-                 nn.ReLU(True)]
+                 nn.ReLU(True)]]
 
         for i in range(n_downsampling):
             self.mult = 1
-            model += [nn.Conv2d(ngf, ngf, kernel_size=3,
+            model += [[nn.Conv2d(ngf, ngf, kernel_size=3,
                                 stride=2, padding=1, bias=use_bias),
                       norm_layer(ngf),
-                      nn.ReLU(True)]
+                      nn.ReLU(True)]]
 
         self.mult = 1
         for i in range(n_blocks):
-            model += [ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            model += [[ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]]
 
-        model += [nn.ReLU(True)]
+        model += [[nn.ReLU(True)]]
 
-        model = nn.Sequential(*model)
+        # model = nn.Sequential(*model)
         return model, ngf * self.mult
 
 
@@ -677,30 +680,94 @@ class GatedGenerator(nn.Module):
             use_bias = norm_layer == nn.InstanceNorm2d
 
         model = []
-        model += [nn.Upsample(scale_factor=(n_upsampling ** 2 * 2 * 1), mode='nearest')]
+        model += [nn.Upsample(scale_factor=(2 ** n_upsampling * 2 * 1), mode='nearest')]
 
         model = nn.Sequential(*model)
         return model
-
 
     def forward(self, input_img, ground_truth, gt_mask=None, use_area_constraint=0):
         if self.use_gt_mask:
             gate_out = gt_mask.float()
         else:
-            gate_real_mid = self.real_stream.forward(input_img)
-            gate_fake_mid = self.fake_stream.forward(ground_truth)
-            if self.add_position_signal: # add positions (todo): could also try using different position with different flags.
-                gate_real_mid = gate_real_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_real_mid.size()), 1, 128))
-                gate_fake_mid = gate_fake_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_fake_mid.size()), 1, 128))
+            gate_real_mid_res = [input_img]
+            for n in range(len(self.downsample_gate_model)):
+                model = nn.Sequential(*self.downsample_gate_model[n])
+                gate_real_mid_res.append(model.forward(gate_real_mid_res[-1]))
+            gate_real_mid_res = gate_real_mid_res[1:]
 
-            gate_real_mid, gate_fake_mid = self._duo_forward(
-                gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8
-            )
+            gate_fake_mid_res = [ground_truth]
+            for n in range(len(self.downsample_gate_model)):
+                model = nn.Sequential(*self.downsample_gate_model[n])
+                gate_fake_mid_res.append(model(gate_fake_mid_res[-1]))
+            gate_fake_mid_res = gate_fake_mid_res[1:]
 
-            gate_mid = torch.nn.CosineSimilarity().forward(
+            if self.which_net_mask=='basic':
+                gate_real_mid = gate_real_mid_res[-1]
+                gate_fake_mid = gate_fake_mid_res[-1]
+                if self.add_position_signal:  # add positions (todo): could also try using different position with different flags.
+                    gate_real_mid = gate_real_mid + torch.from_numpy(
+                        self._position_signal_nd_numpy(list(gate_real_mid.size()), 1, 128))
+                    gate_fake_mid = gate_fake_mid + torch.from_numpy(
+                        self._position_signal_nd_numpy(list(gate_fake_mid.size()), 1, 128))
+                gate_real_mid, gate_fake_mid = self._duo_forward(
+                    gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8
+                )
+                gate_mid = torch.nn.CosineSimilarity().forward(
                     gate_real_mid, gate_fake_mid,
                 ).unsqueeze(1)
-            gate_out = self.out_gated_stream.forward(gate_mid)
+                gate_out = self.out_gated_stream.forward(gate_mid)
+
+            elif self.which_net_mask == 'multiscale1': # upsample, concat, consine similarity
+                gate_real_duo_res = []
+                gate_fake_duo_res = []
+                for i in range(1+4): # todo, option, 1 + n_downsample
+                    gate_real_duo, gate_fake_duo = self._duo_forward(
+                        gate_real_mid_res[i], gate_fake_mid_res[i], self.out_dim // self.duo_att_ratio, 8*(2**(4-i)), 8*(2**(4-i)) # todo, option, n_downsample
+                    )
+                    gate_real_duo_res.append(gate_real_duo)
+                    gate_fake_duo_res.append(gate_fake_duo)
+                gate_real_duo, gate_fake_duo = self._duo_forward(
+                    gate_real_mid_res[-1], gate_fake_mid_res[-1], self.out_dim // self.duo_att_ratio, 8, 8)
+                gate_real_duo_res.append(gate_real_duo)
+                gate_fake_duo_res.append(gate_fake_duo)
+
+                model = []
+                for i in range(4+1):
+                    model += [nn.ConvTranspose2d(self.out_dim, self.out_dim, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
+                              nn.BatchNorm2d(self.out_dim),
+                              nn.ReLU(True)]
+                    seq = nn.Sequential(*model)
+                    gate_fake_duo_res[i], gate_real_duo_res[i] = seq.forward(gate_fake_duo_res[i]), seq.forward(gate_real_duo_res[i])
+                gate_fake_duo_res[-1], gate_real_duo_res[-1] = seq.forward(gate_fake_duo_res[-1]), seq.forward(gate_real_duo_res[-1])
+
+                # gate_real_mid = nn.Conv2d(self.out_dim * (1+4+1), self.out_dim, kernel_size=1, stride=1).forward(torch.cat(gate_real_duo_res, 1)) # todo, option, n_downsample
+                # gate_fake_mid = nn.Conv2d(self.out_dim * (1+4+1), self.out_dim, kernel_size=1, stride=1).forward(torch.cat(gate_fake_duo_res, 1))
+                gate_real_mid = torch.cat(gate_real_duo_res, 1)
+                gate_fake_mid = torch.cat(gate_fake_duo_res, 1)
+                gate_out = torch.nn.CosineSimilarity().forward(gate_real_mid, gate_fake_mid).unsqueeze(1)
+            elif self.which_net_mask == 'multiscale2': # consine, upsample concat
+                gate_out_res = []
+                for i in range(1 + 4):  # todo, option, 1 + n_downsample
+                    gate_real_duo, gate_fake_duo = self._duo_forward(
+                            gate_real_mid_res[i], gate_fake_mid_res[i], self.out_dim // self.duo_att_ratio,
+                            8 * (2 ** (4 - i)), 8 * (2 ** (4 - i))# todo, option, n_downsample
+                    )
+                    gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo,).unsqueeze(1)
+                    gate_out = nn.Sequential(*[nn.Upsample(scale_factor=(2 ** i * 2 * 1), mode='nearest'), ]).forward(gate_mid)
+                    gate_out_res.append(gate_out)
+                gate_real_duo, gate_fake_duo = self._duo_forward(
+                    gate_real_mid_res[i], gate_fake_mid_res[i], self.out_dim // self.duo_att_ratio, 8, 8)
+                gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo, ).unsqueeze(1)
+                gate_out = self.out_gated_stream.forward(gate_mid)
+                gate_out_res.append(gate_out)
+
+                gate_out = torch.cat(gate_out_res, 1)
+                # gate_out = nn.Sequential(*[nn.Conv2d((1+4+1), 1, kernel_size=1, stride=1), nn.Sigmoid()]).forward(gate_out) #todo, option, n_downsample
+                n, c, w, h = gate_out.size()
+                gate_out = gate_out.view(n, c, w * h).permute(0, 2, 1)
+                gate_out = F.max_pool1d(gate_out, 1, 1).permute(0, 2, 1).view(n, c, w, h)
+            else:
+                raise NotImplementedError('mask net name [%s] is not recognized' % self.which_net_mask)
 
         g_down = self.g_down(input_img)
         g_up = self.g_up(g_down)
