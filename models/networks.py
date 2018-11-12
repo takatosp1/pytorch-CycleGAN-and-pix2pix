@@ -534,9 +534,25 @@ class GatedGenerator(nn.Module):
                     setattr(self, 'upsample_gate_model'+str(i), nn.Sequential(*model))
                 model = [nn.Conv2d(self.out_dim * (1+4+1), self.out_dim, kernel_size=1, stride=1), norm_layer(self.out_dim), nn.ReLU(True)]  # todo, option, n_downsample
                 setattr(self, 'conv_af_upsample_gate', nn.Sequential(*model))
-            if self.which_net_mask == 'multiscale2':
+            elif self.which_net_mask == 'multiscale2':
                 model =[nn.Conv2d((1 + 4 + 1), 1, kernel_size=1, stride=1), nn.Sigmoid()]
                 setattr(self, 'conv_af_upsample_gate', nn.Sequential(*model)) # todo, option, n_downsample
+            elif self.which_net_mask == 'multiscale3':
+                model = [nn.Conv2d(self.out_dim * (1 + 4 + 1), self.out_dim, kernel_size=1, stride=1),
+                         norm_layer(self.out_dim), nn.ReLU(True)]  # todo, option, n_downsample
+                setattr(self, 'conv_af_downsample_gate', nn.Sequential(*model))
+                self.pool_of_duo_downsample = nn.Sequential(*[nn.AvgPool2d(3, stride=2, padding=[1, 1])])
+            elif self.which_net_mask == 'multiscale4':
+                model = [nn.Conv2d((1 + 4 + 1), 1, kernel_size=1, stride=1), nn.Sigmoid()] # todo, option, n_downsample
+                setattr(self, 'conv_af_downsample_gate', nn.Sequential(*model))
+                self.pool_of_duo_downsample = nn.Sequential(*[nn.AvgPool2d(3, stride=2, padding=[1, 1])])
+            elif self.which_net_mask == 'multiscale5':
+                out_dim = (1+4+1) * self.out_dim # todo, option, n_downsample
+                self._add_duo_att(out_dim, out_dim // self.duo_att_ratio, norm_layer)
+                model = [nn.Conv2d(out_dim, out_dim, kernel_size=1, stride=1),
+                         norm_layer(out_dim), nn.ReLU(True)]  # todo, option, n_downsample
+                setattr(self, 'conv_af_downsample_gate', nn.Sequential(*model))
+                self.pool_of_duo_downsample = nn.Sequential(*[nn.AvgPool2d(3, stride=2, padding=[1, 1])])
 
         self.g_down = self._downsample_stream(input_nc, output_nc)
         self.g_up = self._upsample_stream(input_nc, output_nc)
@@ -730,7 +746,7 @@ class GatedGenerator(nn.Module):
                 ).unsqueeze(1)
                 gate_out = self.out_gated_stream.forward(gate_mid)
 
-            elif self.which_net_mask == 'multiscale1': # upsample, concat, consine similarity
+            elif self.which_net_mask == 'multiscale1': # duo, upsample, concat, consine similarity
                 gate_real_duo_res = []
                 gate_fake_duo_res = []
                 for i in range(1+4): # todo, option, 1 + n_downsample
@@ -755,7 +771,7 @@ class GatedGenerator(nn.Module):
                 gate_real_mid = torch.cat(gate_real_duo_res, 1)
                 gate_fake_mid = torch.cat(gate_fake_duo_res, 1)
                 gate_out = torch.nn.CosineSimilarity().forward(gate_real_mid, gate_fake_mid).unsqueeze(1)
-            elif self.which_net_mask == 'multiscale2': # consine, upsample concat
+            elif self.which_net_mask == 'multiscale2': # duo, consine sim, upsample, concat
                 gate_out_res = []
                 for i in range(1 + 4):  # todo, option, 1 + n_downsample
                     gate_real_duo, gate_fake_duo = self._duo_forward(
@@ -777,6 +793,104 @@ class GatedGenerator(nn.Module):
                 # n, c, w, h = gate_out.size()
                 # gate_out = gate_out.view(n, c, w * h).permute(0, 2, 1)
                 # gate_out = F.max_pool1d(gate_out, 6, 1).permute(0, 2, 1).view(n, 1, w, h)
+            elif self.which_net_mask == 'multiscale3': # duo, downsample, concat, cosine sim, (upsample)
+                gate_real_duo_res = []
+                gate_fake_duo_res = []
+                for i in range(1 + 4):  # todo, option, 1 + n_downsample
+                    gate_real_duo, gate_fake_duo = self._duo_forward(
+                        gate_real_mid_res[i], gate_fake_mid_res[i], self.out_dim // self.duo_att_ratio,
+                                                                    8 * (2 ** (4 - i)), 8 * (2 ** (4 - i)))  # todo, option, n_downsample
+                    gate_real_duo_res.append(gate_real_duo)
+                    gate_fake_duo_res.append(gate_fake_duo)
+                gate_real_duo, gate_fake_duo = self._duo_forward(
+                    gate_real_mid_res[-1], gate_fake_mid_res[-1], self.out_dim // self.duo_att_ratio, 8, 8)
+                gate_real_duo_res.append(gate_real_duo)
+                gate_fake_duo_res.append(gate_fake_duo)
+
+                # downsample with orignal dowmsample_gate_model
+                for n in range(1, 4+1): # todo, option, 1 + n_downsample
+                    seq = getattr(self, 'downsample_gate_model' + str(n))
+                    for i in range(n):
+                        gate_fake_duo_res[i], gate_real_duo_res[i] = seq.forward(gate_fake_duo_res[i]), seq.forward(gate_real_duo_res[i])
+                for n in range(4+1, len(self.downsample_gate_model)-1): # todo, option, 1 + n_downsample
+                    seq = getattr(self, 'downsample_gate_model' + str(n))
+                    for i in range(len(gate_fake_duo_res)-1):
+                        gate_fake_duo_res[i], gate_real_duo_res[i] = seq.forward(gate_fake_duo_res[i]), seq.forward(
+                            gate_real_duo_res[i])
+
+                # # downsample with avgpool net
+                # for n in range(4): # todo, option, n_downsample
+                #     seq = self.pool_of_duo_downsample
+                #     for i in range(n+1):
+                #         gate_fake_duo_res[i], gate_real_duo_res[i] = seq.forward(gate_fake_duo_res[i]), seq.forward(
+                #             gate_real_duo_res[i])
+
+                # seq = getattr(self, 'conv_af_downsample_gate')
+                # gate_real_mid = seq.forward(torch.cat(gate_real_duo_res, 1))
+                # gate_fake_mid = seq.forward(torch.cat(gate_fake_duo_res, 1))
+                gate_real_mid = torch.cat(gate_real_duo_res, 1)
+                gate_fake_mid = torch.cat(gate_fake_duo_res, 1)
+                gate_mid = torch.nn.CosineSimilarity().forward(gate_real_mid, gate_fake_mid).unsqueeze(1)
+                gate_out = self.out_gated_stream.forward(gate_mid)
+            elif self.which_net_mask == 'multiscale4': # duo, consine sim, downsample, concat, (upsample) (not make too much sense here)
+                gate_mid_res = []
+                for i in range(1 + 4):  # todo, option, 1 + n_downsample
+                    gate_real_duo, gate_fake_duo = self._duo_forward(
+                        gate_real_mid_res[i], gate_fake_mid_res[i], self.out_dim // self.duo_att_ratio,
+                                                                    8 * (2 ** (4 - i)), 8 * (2 ** (4 - i))) # todo, option, n_downsample
+                    gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo,).unsqueeze(1)
+                    gate_mid_res.append(gate_mid)
+                gate_real_duo, gate_fake_duo = self._duo_forward(
+                    gate_real_mid_res[i], gate_fake_mid_res[i], self.out_dim // self.duo_att_ratio, 8, 8)
+                gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo, ).unsqueeze(1)
+                gate_mid_res.append(gate_mid)
+
+                for n in range(4): # todo, option, n_downsample
+                    # # downsample with interpolate
+                    # gate_mid_res[n] = nn.Sequential(
+                    #     *[nn.functional.interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]).forward(
+                    #     gate_mid_res[n])  # todo, option, n_downsample
+
+                    # downsample with avgpool net
+                    seq = self.pool_of_duo_downsample
+                    for i in range(n+1):
+                        gate_mid_res[i] = seq.forward(gate_mid_res[i])
+
+                gate_mid = torch.cat(gate_mid_res, 1)
+                model = getattr(self, 'conv_af_downsample_gate')
+                gate_mid = model.forward(gate_mid)
+                # n, c, w, h = gate_mid.size()
+                # gate_mid = gate_mid.view(n, c, w * h).permute(0, 2, 1)
+                # gate_mid = F.max_pool1d(gate_mid, 6, 1).permute(0, 2, 1).view(n, 1, w, h)
+                gate_out = self.out_gated_stream.forward(gate_mid)
+            elif self.which_net_mask == 'multiscale5': # downsample, concat, duo, cosine, sim
+                for n in range(4): #t odo, option, n_downsample
+                    # # downsample with interpolate
+                    # gate_mid_res[n] = nn.Sequential(
+                    #     *[nn.functional.interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]).forward(
+                    #     gate_mid_res[n])  # todo, option, n_downsample
+
+                    # downsample with avgpool net
+                    seq = self.pool_of_duo_downsample
+                    for i in range(n + 1):
+                        gate_fake_mid_res[i], gate_real_mid_res[i] = seq.forward(gate_fake_mid_res[i]), seq.forward(
+                                gate_real_mid_res[i])
+
+                gate_fake_mid, gate_real_mid = gate_fake_mid_res[:1+4], gate_real_mid_res[:1+4] # todo, option, 1+n_downsample
+                gate_fake_mid.append(gate_fake_mid_res[-1])
+                gate_real_mid.append(gate_real_mid_res[-1])
+
+                gate_fake_mid = torch.cat(gate_fake_mid, 1)
+                gate_real_mid = torch.cat(gate_real_mid, 1)
+                # seq = getattr(self, 'conv_af_downsample_gate')
+                # gate_fake_mid = seq.forward(torch.cat(gate_fake_mid, 1))
+                # gate_real_mid = seq.forward(torch.cat(gate_real_mid, 1))
+
+                out_dim = self.out_dim * (1+4+1) # todo, option, 1+n_downsample+1
+                gate_real_duo, gate_fake_duo = self._duo_forward(
+                    gate_real_mid, gate_fake_mid, out_dim // self.duo_att_ratio, 8, 8)
+                gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo, ).unsqueeze(1)
+                gate_out = self.out_gated_stream.forward(gate_mid)
             else:
                 raise NotImplementedError('mask net name [%s] is not recognized' % self.which_net_mask)
 
