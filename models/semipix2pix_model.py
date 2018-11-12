@@ -114,7 +114,7 @@ class SemiPix2PixModel(BaseModel):
         pred_real = self.netD(real_AB)
         self.loss_D_real = self.criterionGAN(pred_real, True)
         if isinstance(pred_real[0], list):
-            self.pred_real = pred_real.clone()
+            self.pred_real = pred_real[-1][-1].clone()
         else:
             self.pred_real = pred_real.clone()
 
