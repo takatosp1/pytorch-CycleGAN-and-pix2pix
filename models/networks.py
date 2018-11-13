@@ -508,6 +508,18 @@ class CoordConv2d(nn.Conv2d):
                         self.padding, self.dilation, self.groups)
 
 
+class Interpolate(nn.Module):
+    def __init__(self, size, mode):
+        super(Interpolate, self).__init__()
+        self.interp = nn.functional.interpolate
+        self.size = size
+        self.mode = mode
+
+    def forward(self, x):
+        x = self.interp(x, size=self.size, mode=self.mode, align_corners=False)
+        return x
+
+
 class GatedGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
             use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=False,
@@ -848,8 +860,7 @@ class GatedGenerator(nn.Module):
                 for n in range(4): # todo, option, n_downsample
                     # # downsample with interpolate
                     # gate_mid_res[n] = nn.Sequential(
-                    #     *[nn.functional.interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]).forward(
-                    #     gate_mid_res[n])  # todo, option, n_downsample
+                    #     *[Interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]).forward(gate_mid_res[n])# todo, option, n_downsample
 
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
@@ -866,9 +877,9 @@ class GatedGenerator(nn.Module):
             elif self.which_net_mask == 'multiscale5': # downsample, concat, duo, cosine, sim
                 for n in range(4): #t odo, option, n_downsample
                     # # downsample with interpolate
-                    # gate_mid_res[n] = nn.Sequential(
-                    #     *[nn.functional.interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]).forward(
-                    #     gate_mid_res[n])  # todo, option, n_downsample
+                    # seq = nn.Sequential(*[Interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]) # todo, option, n_downsample
+                    # gate_fake_mid_res[i], gate_real_mid_res[i] = seq.forward(gate_fake_mid_res[i]), seq.forward(
+                    #     gate_real_mid_res[i])
 
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
