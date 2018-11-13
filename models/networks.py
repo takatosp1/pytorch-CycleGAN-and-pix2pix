@@ -509,7 +509,7 @@ class CoordConv2d(nn.Conv2d):
 
 
 class Interpolate(nn.Module):
-    def __init__(self, scale_factor, size, mode):
+    def __init__(self, scale_factor=None, size=None, mode=None):
         super(Interpolate, self).__init__()
         self.interp = nn.functional.interpolate
         self.size = size
@@ -860,8 +860,7 @@ class GatedGenerator(nn.Module):
 
                 for n in range(4): # todo, option, n_downsample
                     # # downsample with interpolate
-                    # gate_mid_res[n] = nn.Sequential(
-                    #     *[Interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]).forward(gate_mid_res[n])# todo, option, n_downsample
+                    # gate_mid_res[n] = torch.nn.interpolate(gate_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')# todo, option, n_downsample
 
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
@@ -878,9 +877,8 @@ class GatedGenerator(nn.Module):
             elif self.which_net_mask == 'multiscale5': # downsample, concat, duo, cosine, sim
                 for n in range(4): #t odo, option, n_downsample
                     # # downsample with interpolate
-                    # seq = nn.Sequential(*[Interpolate(scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')]) # todo, option, n_downsample
-                    # gate_fake_mid_res[i], gate_real_mid_res[i] = seq.forward(gate_fake_mid_res[i]), seq.forward(
-                    #     gate_real_mid_res[i])
+                    # gate_fake_mid_res[n] = torch.nn.interpolate(gate_fake_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
+                    # gate_real_mid_res[n] = torch.nn.interpolate(gate_real_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
 
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
