@@ -860,7 +860,7 @@ class GatedGenerator(nn.Module):
 
                 for n in range(4): # todo, option, n_downsample
                     # # downsample with interpolate
-                    # gate_mid_res[n] = torch.nn.interpolate(gate_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')# todo, option, n_downsample
+                    # gate_mid_res[n] = torch.nn.functional.interpolate(gate_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')# todo, option, n_downsample
 
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
@@ -877,8 +877,8 @@ class GatedGenerator(nn.Module):
             elif self.which_net_mask == 'multiscale5': # downsample, concat, duo, cosine, sim
                 for n in range(4): #t odo, option, n_downsample
                     # # downsample with interpolate
-                    # gate_fake_mid_res[n] = torch.nn.interpolate(gate_fake_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
-                    # gate_real_mid_res[n] = torch.nn.interpolate(gate_real_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
+                    # gate_fake_mid_res[n] = torch.nn.functional.interpolate(gate_fake_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
+                    # gate_real_mid_res[n] = torch.nn.functional.interpolate(gate_real_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
 
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
