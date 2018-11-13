@@ -509,14 +509,15 @@ class CoordConv2d(nn.Conv2d):
 
 
 class Interpolate(nn.Module):
-    def __init__(self, size, mode):
+    def __init__(self, scale_factor, size, mode):
         super(Interpolate, self).__init__()
         self.interp = nn.functional.interpolate
         self.size = size
         self.mode = mode
+        self.scale_factor = scale_factor
 
     def forward(self, x):
-        x = self.interp(x, size=self.size, mode=self.mode, align_corners=False)
+        x = self.interp(x, scale_factor=self.scale_factor, size=self.size, mode=self.mode, align_corners=False)
         return x
 
 
