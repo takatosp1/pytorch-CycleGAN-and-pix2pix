@@ -567,6 +567,7 @@ class GatedGenerator(nn.Module):
             elif self.which_net_mask == 'multiscale5':
                 out_dim = (1+4+1) * self.out_dim # todo, option, n_downsample
                 self._add_duo_att(out_dim, out_dim // self.duo_att_ratio, norm_layer)
+                # self._add_duo_att(self.out_dim, self.out_dim // self.duo_att_ratio, norm_layer)
                 model = [nn.Conv2d(out_dim, out_dim, kernel_size=1, stride=1),
                          norm_layer(out_dim), nn.ReLU(True)]  # todo, option, n_downsample
                 setattr(self, 'conv_af_downsample_gate', nn.Sequential(*model))
@@ -845,11 +846,29 @@ class GatedGenerator(nn.Module):
                 #         gate_fake_duo_res[i], gate_real_duo_res[i] = seq.forward(gate_fake_duo_res[i]), seq.forward(
                 #             gate_real_duo_res[i])
 
+                # # downsample with interpolate bilinear
+                # for n in range(4): # todo, option, n_downsample
+                #     gate_fake_duo_res[n] = torch.nn.functional.interpolate(gate_fake_duo_res[n],scale_factor=(0.5 ** (4 - n) * 1),mode='bilinear')  # todo, option, n_downsample
+                #     gate_real_duo_res[n] = torch.nn.functional.interpolate(gate_real_duo_res[n],
+                #                                                            scale_factor=(0.5 ** (4 - n) * 1),
+                #                                                            mode='bilinear')  # todo, option, n_downsample
+
                 # seq = getattr(self, 'conv_af_downsample_gate')
                 # gate_real_mid = seq.forward(torch.cat(gate_real_duo_res, 1))
                 # gate_fake_mid = seq.forward(torch.cat(gate_fake_duo_res, 1))
                 gate_real_mid = torch.cat(gate_real_duo_res, 1)
                 gate_fake_mid = torch.cat(gate_fake_duo_res, 1)
+
+                # # max activation along feature map
+                # n, c, w, h = gate_fake_duo_res[0].size()
+                # for i in range(len(gate_fake_duo_res)):
+                #     gate_fake_duo_res[i] = gate_fake_duo_res.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                #     gate_real_duo_res[i] = gate_real_duo_res.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                # gate_real_mid = torch.cat(gate_real_duo_res, 2)
+                # gate_fake_mid = torch.cat(gate_fake_duo_res, 2)
+                # gate_real_mid = F.max_pool1d(gate_real_mid, 6, 1).squeeze(-1).view(n, c, w, h)
+                # gate_fake_mid = F.max_pool1d(gate_fake_mid, 6, 1).squeeze(-1).view(n, c, w, h)
+
                 gate_mid = torch.nn.CosineSimilarity().forward(gate_real_mid, gate_fake_mid).unsqueeze(1)
                 gate_out = self.out_gated_stream.forward(gate_mid)
 
@@ -870,6 +889,11 @@ class GatedGenerator(nn.Module):
                     # # downsample with interpolate
                     # gate_mid_res[n] = torch.nn.functional.interpolate(gate_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest')# todo, option, n_downsample
 
+                    # # downsample with interpolate bilinear
+                    # gate_mid_res[n] = torch.nn.functional.interpolate(gate_mid_res[n],
+                    #                                                   scale_factor=(0.5 ** (4 - n) * 1),
+                    #                                                   mode='bilinear')  # todo, option, n_downsample
+
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
                     for i in range(n+1):
@@ -888,6 +912,10 @@ class GatedGenerator(nn.Module):
                     # # downsample with interpolate
                     # gate_fake_mid_res[n] = torch.nn.functional.interpolate(gate_fake_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
                     # gate_real_mid_res[n] = torch.nn.functional.interpolate(gate_real_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='nearest') # todo, option, n_downsample
+
+                    # # downsample with interpolate bilinear
+                    # gate_fake_mid_res[n] = torch.nn.functional.interpolate(gate_fake_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='bilinear') # todo, option, n_downsample
+                    # gate_real_mid_res[n] = torch.nn.functional.interpolate(gate_real_mid_res[n], scale_factor=(0.5 ** (4 - n) * 1), mode='bilinear') # todo, option, n_downsample
 
                     # downsample with avgpool net
                     seq = self.pool_of_duo_downsample
@@ -910,6 +938,20 @@ class GatedGenerator(nn.Module):
                     gate_real_mid, gate_fake_mid, out_dim // self.duo_att_ratio, 8, 8)
                 gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo, ).unsqueeze(1)
                 gate_out = self.out_gated_stream.forward(gate_mid)
+
+                # # max activation along feature map
+                # n, c, w, h = gate_fake_duo_res[0].size()
+                # for i in range(len(gate_fake_mid)):
+                #     gate_fake_mid[i] = gate_fake_mid.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                #     gate_real_mid[i] = gate_real_mid.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                # gate_real_mid = torch.cat(gate_real_mid, 2)
+                # gate_fake_mid = torch.cat(gate_fake_mid, 2)
+                # gate_real_mid = F.max_pool1d(gate_real_mid, 6, 1).squeeze(-1).view(n, c, w, h)
+                # gate_fake_mid = F.max_pool1d(gate_fake_mid, 6, 1).squeeze(-1).view(n, c, w, h）
+                # gate_real_duo, gate_fake_duo = self._duo_forward(
+                #     gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8)
+                # gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo).unsqueeze(1)
+                # gate_out = self.out_gated_stream.forward(gate_mid)
             else:
                 raise NotImplementedError('mask net name [%s] is not recognized' % self.which_net_mask)
 
