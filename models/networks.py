@@ -862,8 +862,8 @@ class GatedGenerator(nn.Module):
                 # # max activation along feature map
                 # n, c, w, h = gate_fake_duo_res[0].size()
                 # for i in range(len(gate_fake_duo_res)):
-                #     gate_fake_duo_res[i] = gate_fake_duo_res.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
-                #     gate_real_duo_res[i] = gate_real_duo_res.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                #     gate_fake_duo_res[i] = gate_fake_duo_res[i].view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                #     gate_real_duo_res[i] = gate_real_duo_res[i].view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
                 # gate_real_mid = torch.cat(gate_real_duo_res, 2)
                 # gate_fake_mid = torch.cat(gate_fake_duo_res, 2)
                 # gate_real_mid = F.max_pool1d(gate_real_mid, 6, 1).squeeze(-1).view(n, c, w, h)
@@ -942,8 +942,8 @@ class GatedGenerator(nn.Module):
                 # # max activation along feature map
                 # n, c, w, h = gate_fake_duo_res[0].size()
                 # for i in range(len(gate_fake_mid)):
-                #     gate_fake_mid[i] = gate_fake_mid.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
-                #     gate_real_mid[i] = gate_real_mid.view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                #     gate_fake_mid[i] = gate_fake_mid[i].view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
+                #     gate_real_mid[i] = gate_real_mid[i].view(n, c*w*h).unsqueeze(-1) # n, c*w*h, 1
                 # gate_real_mid = torch.cat(gate_real_mid, 2)
                 # gate_fake_mid = torch.cat(gate_fake_mid, 2)
                 # gate_real_mid = F.max_pool1d(gate_real_mid, 6, 1).squeeze(-1).view(n, c, w, h)
