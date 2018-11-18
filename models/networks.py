@@ -947,7 +947,7 @@ class GatedGenerator(nn.Module):
                 # gate_real_mid = torch.cat(gate_real_mid, 2)
                 # gate_fake_mid = torch.cat(gate_fake_mid, 2)
                 # gate_real_mid = F.max_pool1d(gate_real_mid, 6, 1).squeeze(-1).view(n, c, w, h)
-                # gate_fake_mid = F.max_pool1d(gate_fake_mid, 6, 1).squeeze(-1).view(n, c, w, h）
+                # gate_fake_mid = F.max_pool1d(gate_fake_mid, 6, 1).squeeze(-1).view(n, c, w, h)
                 # gate_real_duo, gate_fake_duo = self._duo_forward(
                 #     gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8)
                 # gate_mid = torch.nn.CosineSimilarity().forward(gate_real_duo, gate_fake_duo).unsqueeze(1)
