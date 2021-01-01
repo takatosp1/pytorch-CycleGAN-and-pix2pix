@@ -171,9 +171,9 @@ class AlignedDataset(BaseDataset):
                 print(img.shape)
         return img, gate
 
-    def random_oneblock_crop(self, img, which='A',  oneD_ratio=2):
+    def random_oneblock_crop(self, img, which='A', seg=None, oneD_ratio=2):
         # Split the image by 4 parts, then choose one
-        fake_A = self.get_rand_A(which)
+        fake_A, seg_A = self.get_rand_A(which)
         h = img.shape[1]
         w = img.shape[2]
         h_1 = random.randint(0, oneD_ratio-1)
