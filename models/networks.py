@@ -435,7 +435,7 @@ class CoordConv2d(nn.Conv2d):
 class GatedGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
             use_dropout=False, n_blocks=6, padding_type='reflect', use_gt_mask=False,
-            duo_att_ratio=1, add_position_signal=True):
+            duo_att_ratio=1, add_position_signal=False):
         super(GatedGenerator, self).__init__()
         self.use_gt_mask = use_gt_mask
         self.add_position_signal = add_position_signal
@@ -448,7 +448,6 @@ class GatedGenerator(nn.Module):
 
         self.g_down = self._downsample_stream(input_nc, output_nc)
         self.g_up = self._upsample_stream(input_nc, output_nc)
-
 
     def _add_duo_att(self, d1, d2, norm_layer):
         if type(norm_layer) == functools.partial:
@@ -494,8 +493,6 @@ class GatedGenerator(nn.Module):
         ]
         self.right_conv2_stream = nn.Sequential(*right_conv2_stream)
 
-
-
     def _downsample_stream(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', n_downsampling=2):
         self.input_nc = input_nc
         self.output_nc = output_nc
@@ -524,7 +521,6 @@ class GatedGenerator(nn.Module):
 
         model = nn.Sequential(*model)
         return model
-
 
     def _upsample_stream(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', n_upsampling=2, use_tanh=True, use_sigmoid=False):
         self.input_nc = input_nc
@@ -559,7 +555,6 @@ class GatedGenerator(nn.Module):
         model = nn.Sequential(*model)
         return model
 
-
     def _downsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=2, padding_type='reflect', n_downsampling=4):
         self.input_nc = input_nc
         self.output_nc = output_nc
@@ -591,7 +586,6 @@ class GatedGenerator(nn.Module):
         model = nn.Sequential(*model)
         return model, ngf * self.mult
 
-
     def _upsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, padding_type='reflect', n_upsampling=4, use_tanh=True, use_sigmoid=False):
         self.input_nc = input_nc
         self.output_nc = output_nc
@@ -607,16 +601,15 @@ class GatedGenerator(nn.Module):
         model = nn.Sequential(*model)
         return model
 
-
-    def forward(self, input_img, ground_truth, gt_mask=None, use_area_constraint=0):
+    def forward(self, input_img, ground_truth, gt_mask=None):
         if self.use_gt_mask:
             gate_out = gt_mask.float()
         else:
             gate_real_mid = self.real_stream.forward(input_img)
             gate_fake_mid = self.fake_stream.forward(ground_truth)
-            if self.add_position_signal: # add positions (todo): could also try using different position with different flags.
-                gate_real_mid = gate_real_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_real_mid.size()), 1, 128))
-                gate_fake_mid = gate_fake_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_fake_mid.size()), 1, 128))
+            if self.add_position_signal:
+                gate_real_mid = gate_real_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_real_mid.size()), 1, 128)).to(gate_real_mid.device)
+                gate_fake_mid = gate_fake_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_fake_mid.size()), 1, 128)).to(gate_fake_mid.device)
 
             gate_real_mid, gate_fake_mid = self._duo_forward(
                 gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8
@@ -629,16 +622,11 @@ class GatedGenerator(nn.Module):
 
         g_down = self.g_down(input_img)
         g_up = self.g_up(g_down)
+        gate_sum = gate_mid.sum(3).sum(2)
 
-        out = g_up * gate_out
+        return g_up, gate_out, gate_sum
 
-        gated_gt = ground_truth * gate_out
 
-        if use_area_constraint:
-            gate_sum = gate_mid.sum(3).sum(2)
-            return g_up, out, gate_out, gate_sum, gated_gt
-        else:
-            return g_up, out, gate_out, gated_gt
 
     def _position_signal_nd_numpy(self, tensor_size, min_timescale=1.0, max_timescale=1.0e4):
         # tensor_size = [batch, channel, d_1, d_2,.., d_n], in image case n=2
@@ -710,7 +698,7 @@ class GatedGenerator(nn.Module):
         return self.left_out, self.right_out
 
 
-def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], use_gt_mask=False, add_position_signal=True):
+def define_gated_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], use_gt_mask=False, add_position_signal=False):
     netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 

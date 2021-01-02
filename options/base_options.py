@@ -53,12 +53,12 @@ class BaseOptions():
         parser.add_argument('--replace_ab_same_idx', default=1, type=int, help='Only activated when crop_replace is image, the replaced AB images should from the same pair or not')
         parser.add_argument('--random_crop', default='random_multiblocks_crop', type=str, help='choose which random crop method, [random_multiblocks_crop|random_oneblock_crop]')
         parser.add_argument('--crop_ratio', default=0.25, type=float, help='Used in random_multiblocks_crop, ratio of areas to be cropped and set to noise')
-        parser.add_argument('--size_split', default=2, type=int, help='Used in random_multiblocks_crop to generate blocks')
+        parser.add_argument('--size_split', default=4, type=int, help='Used in random_multiblocks_crop to generate blocks')
         parser.add_argument('--block_size', default=128, type=int, help='Used in random_oneblock_crop')
         parser.add_argument('--use_gt_mask', default=0, type=int, help='')
         parser.add_argument('--use_area_constraint', default=0, type=int, help='')
         parser.add_argument('--visualize_L1_loss', default=0, type=int, help='')
-        parser.add_argument('--add_position_signal', default=1, type=int, help='encode position info in duo attention network')
+        parser.add_argument('--add_position_signal', default=0, type=int, help='encode position info in duo attention network')
         self.initialized = True
         return parser
 
