@@ -85,6 +85,9 @@ class SemiAlignedDataset(BaseDataset):
         elif crop_replace == "gray":
             replace_A[:, :, :] = 128
             replace_B[:, :, :] = 128
+        elif crop_replace == "rand":
+            replace_A = np.random.rand(A.shape[1], A.shape[2], A.shape[0]) * 255
+            replace_B = np.random.rand(B.shape[1], B.shape[2], B.shape[0]) * 255
         replace_A = transforms.ToTensor()(replace_A)
         replace_B = transforms.ToTensor()(replace_B)
         replace_A = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(replace_A)
