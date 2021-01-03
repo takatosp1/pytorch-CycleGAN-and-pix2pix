@@ -76,22 +76,20 @@ class SemiAlignedDataset(BaseDataset):
 
         replace_A = np.ones((A.shape[1], A.shape[2], A.shape[0]))
         replace_B = np.ones((B.shape[1], B.shape[2], B.shape[0]))
-        if crop_replace == "black":
-            replace_A[:, :, :] = 255
-            replace_B[:, :, :] = 255
-        elif crop_replace == "white":  # TODO: fix
-            replace_A[:, :, :] = 0
-            replace_B[:, :, :] = 0
+        if crop_replace == "white":
+            replace_A[:, :, :] = 1.0
+            replace_B[:, :, :] = 1.0
+        elif crop_replace == "black":
+            replace_A[:, :, :] = -1.0
+            replace_B[:, :, :] = -1.0
         elif crop_replace == "gray":
-            replace_A[:, :, :] = 128
-            replace_B[:, :, :] = 128
+            replace_A[:, :, :] = 0.0
+            replace_B[:, :, :] = 0.0
         elif crop_replace == "rand":
-            replace_A = np.random.rand(A.shape[1], A.shape[2], A.shape[0]) * 255
-            replace_B = np.random.rand(B.shape[1], B.shape[2], B.shape[0]) * 255
-        replace_A = transforms.ToTensor()(replace_A)
-        replace_B = transforms.ToTensor()(replace_B)
-        replace_A = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(replace_A)
-        replace_B = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(replace_B)
+            replace_A = (np.random.rand(A.shape[1], A.shape[2], A.shape[0]) - 0.5 ) / 0.5
+            replace_B = (np.random.rand(B.shape[1], B.shape[2], B.shape[0]) - 0.5 ) / 0.5
+        replace_A = transforms.ToTensor()(replace_A).float()
+        replace_B = transforms.ToTensor()(replace_B).float()
 
         return replace_A, replace_B
 
@@ -173,7 +171,7 @@ class SemiAlignedDataset(BaseDataset):
         w = A.shape[2]
 
         gate = np.ones((h, w, 1))
-        gate = transforms.ToTensor()(gate)
+        gate = transforms.ToTensor()(gate).float()
 
         replace_A, replace_B = self.get_default_replace_A_B(A, B)
 
