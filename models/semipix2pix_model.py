@@ -18,8 +18,8 @@ class SemiPix2PixModel(BaseModel):
         parser.set_defaults(pool_size=0, no_lsgan=True, norm='batch', gt_crop=1)
         parser.set_defaults(dataset_mode='semialigned')
         parser.set_defaults(which_model_netG='unet_256')
-        if is_train:
-            parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
+        # if is_train:
+        #     parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
 
         return parser
 
@@ -95,7 +95,7 @@ class SemiPix2PixModel(BaseModel):
         # Fake
         # stop backprop to the generator by detaching fake_B
         fake_AB = self.fake_AB_pool.query(
-            torch.cat((self.real_A, self.fake_B), 1))  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
+            torch.cat((self.real_A, self.fake_B_w_pred_gate), 1))  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
         pred_fake = self.netD(fake_AB.detach())
         self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
@@ -125,12 +125,12 @@ class SemiPix2PixModel(BaseModel):
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
-        fake_AB = torch.cat((self.real_A, self.fake_B), 1)  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
+        fake_AB = torch.cat((self.real_A, self.fake_B_w_pred_gate), 1)  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
         pred_fake = self.netD(fake_AB)
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        self.loss_G_L1 = self.criterionL1(self.fake_B_w_pred_gate, self.real_B_w_pred_gate) * self.opt.lambda_L1
+        self.loss_G_L1 = self.criterionL1(self.fake_B_w_pred_gate, self.real_B) * self.opt.lambda_L1
 
         # loss for pred_gate
         # self.real_A_w_pred_gate = self.real_A * self.pred_gate.detach()
