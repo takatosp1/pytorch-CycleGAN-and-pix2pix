@@ -75,7 +75,10 @@ class BaseModel():
         visual_ret = OrderedDict()
         for name in self.visual_names:
             if isinstance(name, str):
-                visual_ret[name] = getattr(self, name)
+                try:
+                    visual_ret[name] = getattr(self, name)
+                except:
+                    continue
         return visual_ret
 
     # return traning losses/errors. train.py will print out these errors as debugging information

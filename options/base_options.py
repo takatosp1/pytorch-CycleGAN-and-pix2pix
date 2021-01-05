@@ -25,7 +25,7 @@ class BaseOptions():
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if which_model_netD==n_layers')
         parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
-        parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | aligned | single]')
+        parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | aligned | single | semialigned]')
         parser.add_argument('--model', type=str, default='cycle_gan',
                             help='chooses which model to use. cycle_gan, pix2pix, test')
         parser.add_argument('--which_direction', type=str, default='AtoB', help='AtoB or BtoA')
@@ -59,6 +59,11 @@ class BaseOptions():
         parser.add_argument('--use_area_constraint', default=0, type=int, help='')
         parser.add_argument('--visualize_L1_loss', default=0, type=int, help='')
         parser.add_argument('--add_position_signal', default=0, type=int, help='encode position info in duo attention network')
+        
+        parser.add_argument('--save_data', default=0, type=int, help='Used to save the generated data for semialigned dataset')
+        parser.add_argument('--save_dir_suffix', default='_save', type=str, help='')
+        parser.add_argument('--load_data', default=0, type=int, help='Load the saved data directly to use')
+        parser.add_argument('--load_dir_suffix', default='_save', type=str, help='')
         self.initialized = True
         return parser
 

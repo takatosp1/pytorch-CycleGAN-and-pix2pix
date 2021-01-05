@@ -43,6 +43,9 @@ class SemiPix2Pix2Model(BaseModel):
             self.visual_names.append('L1')
             self.visual_names.append('gated_L1')
 
+        if not self.isTrain:
+            self.visual_names.append('real_gate')
+
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G', 'D']

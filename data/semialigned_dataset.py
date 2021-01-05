@@ -6,6 +6,7 @@ import numpy as np
 from data.base_dataset import BaseDataset
 from data.image_folder import make_dataset
 from PIL import Image
+from util.util import save_image, tensor2im
 
 
 class SemiAlignedDataset(BaseDataset):
@@ -19,8 +20,18 @@ class SemiAlignedDataset(BaseDataset):
         self.dir_AB = os.path.join(opt.dataroot, opt.phase)
         self.AB_paths = sorted(make_dataset(self.dir_AB))
         assert(opt.resize_or_crop == 'resize_and_crop')
+        assert opt.gt_crop == 1
         # if opt.data_seglabel:
         #     self.dir_seglabel = os.path.join(opt.dataroot, opt.phase+'_label')
+
+        assert not (self.opt.save_data and self.opt.load_data)
+        if self.opt.save_data:
+            self.dir_AB_save = os.path.join(opt.dataroot, opt.phase+opt.save_dir_suffix)
+            assert not os.path.exists(self.dir_AB_save), "do you really want to override the dir %s?" % self.dir_AB_save
+            os.mkdir(self.dir_AB_save)
+        if self.opt.load_data:
+            self.dir_AB_load = os.path.join(opt.dataroot, opt.phase+opt.load_dir_suffix)
+            self.AB_paths = sorted(make_dataset(self.dir_AB_load))
     
     def get_A_B(self, index):
         AB_path = self.AB_paths[index]
@@ -112,15 +123,45 @@ class SemiAlignedDataset(BaseDataset):
 
     def __getitem__(self, index):
         AB_path = self.AB_paths[index]
-        A, B = self.get_A_B(index)
 
-        if self.opt.gt_crop:
-            if self.opt.random_crop == 'random_multiblocks_crop':
-                self.random_crop = self.random_multiblocks_crop
-            elif self.opt.random_crop == 'random_oneblock_crop':
-                self.random_crop = self.random_oneblock_crop
+        if self.opt.load_data:
+            AB = Image.open(AB_path).convert('RGB')
 
-            A, B, gate = self.random_crop(A, B, [index])
+            w, h = AB.size
+            w3 = int(w / 3)
+            A = AB.crop((0, 0, w3, h))
+            B = AB.crop((w3, 0, w3 * 2, h))
+            gate = AB.crop((w3 * 2, 0, w, h))
+
+            A = transforms.ToTensor()(A)
+            B = transforms.ToTensor()(B)
+            gate = transforms.ToTensor()(gate)
+
+            A = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(A)
+            B = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(B)
+            gate = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(gate)[0].unsqueeze(0)
+
+        else:
+            A, B = self.get_A_B(index)
+            if self.opt.gt_crop:
+                if self.opt.random_crop == 'random_multiblocks_crop':
+                    self.random_crop = self.random_multiblocks_crop
+                elif self.opt.random_crop == 'random_oneblock_crop':
+                    self.random_crop = self.random_oneblock_crop
+
+                A, B, gate = self.random_crop(A, B, [index])
+
+        # this can be used to generate the test dataset with crop and replacement, and this dataset can be used for all models to compare.
+        if self.opt.save_data:
+            save_path = os.path.join(self.dir_AB_save, AB_path.split('/')[-1])
+            save_AB = torch.zeros((1, A.shape[0], self.opt.fineSize, self.opt.fineSize * 3))
+            save_AB[0, :, 0:self.opt.fineSize, 0:self.opt.fineSize] = A
+            save_AB[0, :, 0:self.opt.fineSize, self.opt.fineSize:self.opt.fineSize*2] = B
+            save_AB[0, 0, 0:self.opt.fineSize, self.opt.fineSize*2:self.opt.fineSize*3] = gate
+            save_AB[0, 1, 0:self.opt.fineSize, self.opt.fineSize*2:self.opt.fineSize*3] = gate
+            save_AB[0, 2, 0:self.opt.fineSize, self.opt.fineSize*2:self.opt.fineSize*3] = gate
+            save_AB_numpy = tensor2im(save_AB)
+            save_image(save_AB_numpy, save_path)
 
         return{'A': A, 'B': B, 'gate':gate, 'A_paths': AB_path, 'B_paths': AB_path}
 
