@@ -11,6 +11,16 @@ import numpy as np
 # Helper Functions
 ###############################################################################
 
+class LBSign(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, input):
+        return torch.sign(input)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output.clamp_(-1, 1)
+
 
 def get_norm_layer(norm_type='instance'):
     if norm_type == 'batch':
