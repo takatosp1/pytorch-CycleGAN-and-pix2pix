@@ -1,3 +1,7 @@
+###################################################################################
+# TODO (yi 2020): The codes related to add_D_feat_loss is added in extra without
+# fully investigate.
+###################################################################################
 import torch
 from util.image_pool import ImagePool
 from .base_model import BaseModel
@@ -28,6 +32,8 @@ class SemiPix2PixModel(BaseModel):
         self.isTrain = opt.isTrain
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
         self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
+        if self.opt.add_D_feat_loss:
+            self.loss_names.append('D_feat')
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         self.visual_names = ['real_A', 'real_B', 'fake_B', 'pred_gate', 'real_B_w_pred_gate', 'fake_B_w_pred_gate']
         if self.isTrain:
@@ -58,13 +64,14 @@ class SemiPix2PixModel(BaseModel):
             use_sigmoid = opt.no_lsgan
             self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf,
                                           opt.which_model_netD,
-                                          opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
+                                          opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids, opt.add_D_feat_loss)
 
         if self.isTrain:
             self.fake_AB_pool = ImagePool(opt.pool_size)
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan).to(self.device)
             self.criterionL1 = torch.nn.L1Loss()
+            self.criterionFeat = torch.nn.L1Loss()
             # additional loss function for predicted mask
             self.criterionMask = torch.nn.L1Loss()
 
@@ -103,6 +110,9 @@ class SemiPix2PixModel(BaseModel):
         fake_AB = self.fake_AB_pool.query(
             torch.cat((self.real_A, self.fake_B_w_pred_gate), 1))  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
         pred_fake = self.netD(fake_AB.detach())
+        if self.opt.add_D_feat_loss:
+            self.pred_fake_stack = pred_fake
+            pred_fake = pred_fake[-1]
         self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
         # Real
@@ -110,10 +120,25 @@ class SemiPix2PixModel(BaseModel):
         # self.real_A_w_pred_gate = self.real_A * self.pred_gate.detach()
         # real_AB = torch.cat((self.real_A_w_pred_gate, self.real_B_w_pred_gate), 1)
         pred_real = self.netD(real_AB.detach())
+        if self.opt.add_D_feat_loss:
+            self.pred_real_stack = pred_real
+            pred_real = pred_real[-1]
         self.loss_D_real = self.criterionGAN(pred_real, True) 
+
+        # feature matching loss
+        self.loss_D_feat = 0
+        if self.opt.add_D_feat_loss:
+            # feat_weights = 4.0 / (self.netD.n_layers + 1)
+            feat_weights = 1.0
+            for j in range(len(self.pred_fake_stack) - 1):
+                self.loss_D_feat += \
+                        feat_weights * self.opt.lambda_D_feat_L1 * \
+                        self.criterionFeat(self.pred_fake_stack[j], self.pred_real_stack[j].detach())
 
         # Combined loss
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+        if self.opt.add_D_feat_loss:
+            self.loss_D += self.loss_D_feat
         self.loss_D.backward()
 
         # For Visualization
@@ -133,6 +158,8 @@ class SemiPix2PixModel(BaseModel):
         # First, G(A) should fake the discriminator
         fake_AB = torch.cat((self.real_A, self.fake_B_w_pred_gate), 1)  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
         pred_fake = self.netD(fake_AB)
+        if self.opt.add_D_feat_loss:
+            pred_fake = pred_fake[-1]
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B

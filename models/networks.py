@@ -104,14 +104,14 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
 
 
 def define_D(input_nc, ndf, which_model_netD,
-             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[], feat_matching=False):
     netD = None
     norm_layer = get_norm_layer(norm_type=norm)
 
     if which_model_netD == 'basic':
-        netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
+        netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid, feat_matching=feat_matching)
     elif which_model_netD == 'n_layers':
-        netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
+        netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, feat_matching=feat_matching)
     elif which_model_netD == 'pixel':
         netD = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
     else:
@@ -333,51 +333,75 @@ class UnetSkipConnectionBlock(nn.Module):
 
 
 # Defines the PatchGAN discriminator with the specified arguments.
+# TODO (yi 2020): The codes related to feat_matching is added in extra.
 class NLayerDiscriminator(nn.Module):
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False, feat_matching=False):
         super(NLayerDiscriminator, self).__init__()
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
+        self.n_layers = n_layers
+        self.feat_matching = feat_matching
+        self.use_sigmoid = use_sigmoid
+
         kw = 4
         padw = 1
-        sequence = [
+        sequence = [[
             nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),
             nn.LeakyReLU(0.2, True)
-        ]
+        ]]
 
         nf_mult = 1
         nf_mult_prev = 1
         for n in range(1, n_layers):
             nf_mult_prev = nf_mult
             nf_mult = min(2**n, 8)
-            sequence += [
+            sequence += [[
                 nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
                           kernel_size=kw, stride=2, padding=padw, bias=use_bias),
                 norm_layer(ndf * nf_mult),
                 nn.LeakyReLU(0.2, True)
-            ]
+            ]]
 
         nf_mult_prev = nf_mult
         nf_mult = min(2**n_layers, 8)
-        sequence += [
+        sequence += [[
             nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
                       kernel_size=kw, stride=1, padding=padw, bias=use_bias),
             norm_layer(ndf * nf_mult),
             nn.LeakyReLU(0.2, True)
-        ]
+        ]]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+        sequence += [[nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]]
 
         if use_sigmoid:
-            sequence += [nn.Sigmoid()]
+            sequence += [[nn.Sigmoid()]]
 
-        self.model = nn.Sequential(*sequence)
+        if self.feat_matching:
+            for n in range(len(sequence)):
+                setattr(self, 'model'+str(n), nn.Sequential(*sequence[n]))
+        else:
+            sequence_stream = []
+            for n in range(len(sequence)):
+                sequence_stream += sequence[n]
+            self.model = nn.Sequential(*sequence_stream)
+
 
     def forward(self, input):
-        return self.model(input)
+        if self.feat_matching:
+            res = [input]
+            if self.use_sigmoid:
+                length = self.n_layers + 3
+            else:
+                length = self.n_layers + 2
+            for n in range(length):
+                model = getattr(self, 'model'+str(n))
+                res.append(model(res[-1]))
+            return res[1:]
+        else:
+            return self.model(input)
 
 
 class PixelDiscriminator(nn.Module):

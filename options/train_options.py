@@ -25,6 +25,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--lr_decay_iters', type=int, default=50, help='multiply by a gamma every lr_decay_iters iterations')
         parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
         parser.add_argument('--lambda_mask_L2', type=float, default=100.0, help='weight for mask L2 loss')
+        parser.add_argument('--lambda_D_feat_L1', type=int, default=10.0, help='only used if add_D_feat_loss==1')
 
         self.isTrain = True
         return parser
