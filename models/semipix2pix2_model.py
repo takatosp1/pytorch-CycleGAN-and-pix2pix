@@ -88,7 +88,9 @@ class SemiPix2Pix2Model(BaseModel):
 
     def forward(self):
         self.fake_B, self.pred_gate, self.gate_sum = self.netG(self.real_A, self.real_B, self.real_gate)
-        self.pred_gate = (sign(self.pred_gate - 0.5) + 1 ) / 2.0
+        if not self.isTrain:
+            # enable straight through estimator (if implemented correctly) in training predicts worse mask
+            self.pred_gate = (sign(self.pred_gate - 0.5) + 1 ) / 2.0
 
         self.fake_B_w_pred_gate = self.fake_B * self.pred_gate
         self.real_B_w_pred_gate = self.real_B * self.pred_gate
