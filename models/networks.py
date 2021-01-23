@@ -94,6 +94,10 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif which_model_netG == 'unet_256':
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    elif which_model_netG == 'ed':
+        # same downsample net as in ResnetGenerator, but adding more blocks in the beginning in upsample net than in ResnetGenerator.
+        # in total, it has 2*n_blocks blocks
+        netG = EDGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     return init_net(netG, init_type, init_gain, gpu_ids)
@@ -114,6 +118,12 @@ def define_D(input_nc, ndf, which_model_netD,
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
                                   which_model_netD)
     return init_net(netD, init_type, init_gain, gpu_ids)
+
+
+def define_M(input_nc, output_nc, ngf, which_model_netM, norm='batch', use_dropout=False, init_type='normal',init_gain=0.02, gpu_ids=[], add_position_signal=False):
+    norm_layer = get_norm_layer(norm_type=norm)
+    netM = MaskPredictor(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=2, add_position_signal=add_position_signal)
+    return init_net(netM, init_type, init_gain, gpu_ids)
 
 
 ##############################################################################
@@ -394,6 +404,7 @@ class PixelDiscriminator(nn.Module):
     def forward(self, input):
         return self.net(input)
 
+
 class CoordConv2d(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True, with_r=False):
@@ -440,6 +451,286 @@ class CoordConv2d(nn.Conv2d):
 
         return F.conv1d(ret, self.weight, self.bias, self.stride,
                         self.padding, self.dilation, self.groups)
+
+
+class EDGenerator(nn.Module):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
+            use_dropout=False, n_blocks=6, padding_type='reflect'):
+        super(EDGenerator, self).__init__()
+        self.g_down = self._downsample_stream(input_nc, output_nc, ngf, norm_layer, use_dropout, n_blocks, padding_type, n_downsampling=2)
+        self.g_up = self._upsample_stream(input_nc, output_nc, ngf, norm_layer, use_dropout, n_blocks, padding_type, n_upsampling=2)
+
+    def _downsample_stream(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', n_downsampling=2):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+                            bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        for i in range(n_downsampling):
+            self.mult = 2**i
+            model += [nn.Conv2d(ngf * self.mult, ngf * self.mult * 2, kernel_size=3,
+                                stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * self.mult * 2),
+                      nn.ReLU(True)]
+
+        self.mult = 2**n_downsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        model = nn.Sequential(*model)
+        return model
+
+    def _upsample_stream(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', n_upsampling=2, use_tanh=True, use_sigmoid=False):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = []
+        mult = 2**n_upsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        for i in range(n_upsampling):
+            mult = 2**(n_upsampling - i)
+            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                         kernel_size=3, stride=2,
+                                         padding=1, output_padding=1,
+                                         bias=use_bias),
+                      norm_layer(int(ngf * mult / 2)),
+                      nn.ReLU(True)]
+
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+
+        if use_tanh:
+            model += [nn.Tanh()]
+        if use_sigmoid:
+            model += [nn.Sigmoid()]
+        model = nn.Sequential(*model)
+        return model
+
+    def forward(self, input_img):
+        g_down = self.g_down(input_img)
+        g_up = self.g_up(g_down)
+        return g_up
+
+
+class MaskPredictor(nn.Module):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
+            use_dropout=False, n_blocks=2, padding_type='reflect', use_gt_mask=False,
+            duo_att_ratio=1, add_position_signal=False):
+        super(MaskPredictor, self).__init__()
+
+        self.use_gt_mask = use_gt_mask
+        self.add_position_signal = add_position_signal
+        self.duo_att_ratio = duo_att_ratio
+
+        if not self.use_gt_mask:
+            self.real_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc, ngf, norm_layer,
+                                                                          use_dropout, n_blocks=n_blocks, padding_type=padding_type, n_downsampling=4)
+            self.fake_stream, self.out_dim = self._downsample_stream_gate(input_nc, output_nc, ngf, norm_layer,
+                                                                          use_dropout, n_blocks=n_blocks, padding_type=padding_type, n_downsampling=4)
+            self.out_gated_stream = self._upsample_stream_gate(input_nc, output_nc, ngf, norm_layer,
+                                                                          use_dropout, padding_type=padding_type, n_upsampling=4,
+                                                                          use_sigmoid=True, use_tanh=False)
+            self._add_duo_att(self.out_dim, self.out_dim // self.duo_att_ratio, norm_layer)
+
+    def _add_duo_att(self, d1, d2, norm_layer):
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        # B d_l H W
+        left_conv1_stream = [
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias
+            ),
+            norm_layer(d2),
+        ]
+        self.left_conv1_stream = nn.Sequential(*left_conv1_stream)
+
+        # B d_l H W
+        left_conv2_stream = [
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias
+            ),
+            norm_layer(d2),
+            nn.ReLU(inplace=True),
+        ]
+        self.left_conv2_stream = nn.Sequential(*left_conv2_stream)
+
+        # B H W d_l
+        right_conv1_stream = [
+            # B d_r H W
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias),
+            norm_layer(d2),
+        ]
+        self.right_conv1_stream = nn.Sequential(*right_conv1_stream)
+
+        # B d_r H W
+        right_conv2_stream = [
+            nn.Conv2d(
+                d1, d2, kernel_size=1, stride=1, padding=0, bias=use_bias),
+            # B d_r H W
+            norm_layer(d2),
+            nn.ReLU(inplace=True),
+        ]
+        self.right_conv2_stream = nn.Sequential(*right_conv2_stream)
+
+    def _downsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=2, padding_type='reflect', n_downsampling=4):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, stride=2,
+                           bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        for i in range(n_downsampling):
+            self.mult = 1
+            model += [nn.Conv2d(ngf, ngf, kernel_size=3,
+                                stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf),
+                      nn.ReLU(True)]
+
+        self.mult = 1
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * self.mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        model += [nn.ReLU(True)]
+
+        model = nn.Sequential(*model)
+        return model, ngf * self.mult
+
+    def _upsample_stream_gate(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, padding_type='reflect', n_upsampling=4, use_tanh=True, use_sigmoid=False):
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = []
+        model += [nn.Upsample(scale_factor=(n_upsampling ** 2 * 2 * 1), mode='nearest')]
+
+        model = nn.Sequential(*model)
+        return model
+
+    def _position_signal_nd_numpy(self, tensor_size, min_timescale=1.0, max_timescale=1.0e4):
+        # tensor_size = [batch, channel, d_1, d_2,.., d_n], in image case n=2
+        num_dims = len(tensor_size)-2 # minus batch dim and channel dim
+        channels = tensor_size[1]
+        num_timescales = channels // (num_dims * 2)
+        log_timescale_increment = (
+                math.log(float(max_timescale) / float(min_timescale)) /
+                (num_timescales - 1))
+        inv_timescales = min_timescale * np.exp(np.arange(num_timescales * 1.0) * - log_timescale_increment)
+        x = np.zeros(tuple(tensor_size)).astype(np.float32)
+        for dim in range(num_dims):
+            dim_size = tensor_size[dim+2]
+            position = np.arange(dim_size * 1.0)
+            scaled_time = np.matmul(inv_timescales[:, np.newaxis], position[np.newaxis, :])
+            signal = np.concatenate((np.sin(scaled_time), np.cos(scaled_time)), axis=0)
+            prepad = dim * 2 * num_timescales
+            postpad = channels - (dim + 1) * 2 * num_timescales
+            signal = np.pad(signal, ((prepad, postpad), (0, 0)), 'constant')
+            signal = np.expand_dims(signal, 0)
+            for _ in range(1 + dim -1):
+                signal = np.expand_dims(signal, -2)
+            for _ in range(num_dims -1 -dim):
+                signal = np.expand_dims(signal, -1)
+            x += signal
+        return x
+
+    def _duo_forward(self, l, r, d2, h, w):
+        # -----------------------------------
+        # B d_l d_r
+        self.left_conv1 = self.left_conv1_stream(l)
+        self.right_conv1 = self.right_conv1_stream(r)
+        self.mul = torch.matmul(
+            self.left_conv1.view(1, d2, -1),
+            self.right_conv1.view(1, d2, -1).permute(0, 2, 1).contiguous()
+        )
+
+        # -----------------------------------
+        # B d_l d_r
+        # B d_l d_r
+        self.norm_mul = torch.sqrt(F.relu(self.mul)) - torch.sqrt(F.relu(-self.mul))
+        self.norm_mul = torch.mul(self.norm_mul, 1.0 / d2)
+
+        # B d_r d_l
+        self.left_softmax = nn.Softmax(dim=2)(self.norm_mul.permute(0, 2, 1).contiguous())
+        # B d_l d_r
+        self.right_softmax = nn.Softmax(dim=2)(self.norm_mul)
+
+        # -----------------------------------
+        # B d_l HxW
+        self.left_conv2 = self.left_conv2_stream(l).reshape(1, d2, -1)
+        # B d_r HxW
+        self.left_out = torch.matmul(
+            self.left_softmax,
+            self.left_conv2
+        )
+        self.left_out = l.add(self.left_out.view(1, d2, h, w))
+        self.left_out = nn.ReLU(inplace=True)(self.left_out)
+
+        # B d_r HxW
+        self.right_conv2 = self.right_conv2_stream(r).reshape(1, d2, -1)
+        # B d_l HxW
+        self.right_out = torch.matmul(
+            self.right_softmax,
+            self.right_conv2
+        )
+        self.right_out = r.add(self.right_out.view(1, d2, h, w))
+        self.right_out = nn.ReLU(inplace=True)(self.right_out)
+        return self.left_out, self.right_out
+
+    def forward(self, input_img, ground_truth, gt_mask=None):
+        if self.use_gt_mask:
+            gate_out = gt_mask.float()
+        else:
+            gate_real_mid = self.real_stream.forward(input_img)
+            gate_fake_mid = self.fake_stream.forward(ground_truth)
+            if self.add_position_signal: # add positions (todo): could also try using different position with different flags.
+                gate_real_mid = gate_real_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_real_mid.size()), 1, 128))
+                gate_fake_mid = gate_fake_mid + torch.from_numpy(self._position_signal_nd_numpy(list(gate_fake_mid.size()), 1, 128))
+
+        gate_real_mid, gate_fake_mid = self._duo_forward(
+            gate_real_mid, gate_fake_mid, self.out_dim // self.duo_att_ratio, 8, 8
+        )
+        gate_mid = torch.nn.CosineSimilarity().forward(gate_real_mid, gate_fake_mid).unsqueeze(1)
+        gate_out = self.out_gated_stream.forward(gate_mid)
+        gate_sum = gate_mid.sum(3).sum(2)
+
+        return gate_out, gate_sum
+
+
+##############################################################################
+# Out-of-Date
+# A GatedGenerator actually can be splitted into a Generator and a MaskPredictor
+##############################################################################
 
 
 class GatedGenerator(nn.Module):

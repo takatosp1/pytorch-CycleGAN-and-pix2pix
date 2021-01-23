@@ -59,6 +59,8 @@ class BaseOptions():
         parser.add_argument('--use_area_constraint', default=0, type=int, help='')
         parser.add_argument('--visualize_L1_loss', default=0, type=int, help='')
         parser.add_argument('--add_position_signal', default=0, type=int, help='encode position info in duo attention network')
+        parser.add_argument('--backward_mode', default='2step', type=str, help='only used for maskpix2pix model. [3step|2step]')
+        parser.add_argument('--add_mask_L2_loss', default=0, type=int, help='only used when backward_mode=2step')
         
         parser.add_argument('--save_data', default=0, type=int, help='Used to save the generated data for semialigned dataset')
         parser.add_argument('--save_dir_suffix', default='_save', type=str, help='')
