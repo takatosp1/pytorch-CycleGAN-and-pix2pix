@@ -96,7 +96,7 @@ class MaskPix2PixModel(BaseModel):
         self.pred_mask, self.mask_sum = self.netM(self.real_A, self.real_B, self.real_mask)
         if not self.isTrain:
             # enable straight through estimator (if implemented correctly) in training predicts worse mask
-            self.pred_gate = (sign(self.pred_gate - 0.5) + 1 ) / 2.0
+            self.pred_mask = (sign(self.pred_mask - 0.5) + 1 ) / 2.0
 
         self.fake_B_w_pred_mask = self.fake_B * self.pred_mask
         self.real_B_w_pred_mask = self.real_B * self.pred_mask
