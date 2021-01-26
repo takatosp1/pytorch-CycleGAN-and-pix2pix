@@ -35,9 +35,10 @@ class SemiPix2PixModel(BaseModel):
         if self.opt.add_D_feat_loss:
             self.loss_names.append('D_feat')
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
-        self.visual_names = ['real_A', 'real_B', 'fake_B', 'pred_gate', 'real_B_w_pred_gate', 'fake_B_w_pred_gate']
+        self.visual_names = ['real_A', 'real_B', 'fake_B', 'pred_gate', 'real_A_w_pred_gate', 'real_B_w_pred_gate', 'fake_B_w_pred_gate']
         if self.isTrain:
             self.visual_names.append('real_gate')
+            self.visual_names.append('real_A_w_real_gate')
             self.visual_names.append('real_B_w_real_gate')
             self.visual_names.append('fake_B_w_real_gate')
             # self.visual_names.append('pred_real')
@@ -99,16 +100,26 @@ class SemiPix2PixModel(BaseModel):
 
         self.fake_B_w_pred_gate = self.fake_B * self.pred_gate
         self.real_B_w_pred_gate = self.real_B * self.pred_gate
+        self.real_A_w_pred_gate = self.real_A * self.pred_gate
 
         # For visualize
         self.gated_L1 = (self.fake_B_w_pred_gate - self.real_B_w_pred_gate).clone().sum(1).unsqueeze(dim=1)
         self.L1 = (self.fake_B - self.real_B).clone().sum(1).unsqueeze(dim=1)
 
     def backward_D(self):
+        if (self.opt.which_direction=='AtoB' and self.opt.which_crop=='B') or (self.opt.which_direction=='BtoA' and self.opt.which_crop=='A'):
+            real_A = self.real_A # TODO: self.real_A * self.pred_gate
+            fake_B = self.fake_B * self.pred_gate
+            real_B = self.real_B
+        else:
+            real_A = self.real_A
+            fake_B = self.fake_B * self.pred_gate
+            real_B = self.real_B * self.pred_gate
+
         # Fake
         # stop backprop to the generator by detaching fake_B
         fake_AB = self.fake_AB_pool.query(
-            torch.cat((self.real_A, self.fake_B_w_pred_gate), 1))  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
+            torch.cat((real_A, fake_B), 1))
         pred_fake = self.netD(fake_AB.detach())
         if self.opt.add_D_feat_loss:
             self.pred_fake_stack = pred_fake
@@ -116,9 +127,7 @@ class SemiPix2PixModel(BaseModel):
         self.loss_D_fake = self.criterionGAN(pred_fake, False)
 
         # Real
-        real_AB = torch.cat((self.real_A, self.real_B), 1) # TODO? real_A_w_pred_gate vs real_B_w_pred_gate
-        # self.real_A_w_pred_gate = self.real_A * self.pred_gate.detach()
-        # real_AB = torch.cat((self.real_A_w_pred_gate, self.real_B_w_pred_gate), 1)
+        real_AB = torch.cat((real_A, real_B), 1)
         pred_real = self.netD(real_AB.detach())
         if self.opt.add_D_feat_loss:
             self.pred_real_stack = pred_real
@@ -144,6 +153,7 @@ class SemiPix2PixModel(BaseModel):
         # For Visualization
         self.real_B_w_real_gate = self.real_B * self.real_gate
         self.fake_B_w_real_gate = self.fake_B * self.real_gate
+        self.real_A_w_real_gate = self.real_A * self.real_gate
         self.pred_fake = 1 - pred_fake.clone()
         self.pred_real = pred_real.clone()
         self.D = self.pred_fake + self.pred_real
@@ -155,20 +165,24 @@ class SemiPix2PixModel(BaseModel):
             self.loss_mask.backward(retain_graph=True, create_graph=True)
 
     def backward_G(self):
+        if (self.opt.which_direction=='AtoB' and self.opt.which_crop=='B') or (self.opt.which_direction=='BtoA' and self.opt.which_crop=='A'):
+            real_A = self.real_A # TODO: self.real_A * self.pred_gate
+            fake_B = self.fake_B * self.pred_gate
+            real_B = self.real_B
+        else:
+            real_A = self.real_A
+            fake_B = self.fake_B
+            real_B = self.real_B
+
         # First, G(A) should fake the discriminator
-        fake_AB = torch.cat((self.real_A, self.fake_B_w_pred_gate), 1)  # TODO? real_A_w_pred_gate vs fake_B_w_pred_gate
+        fake_AB = torch.cat((real_A, self.fake_B * self.pred_gate), 1)
         pred_fake = self.netD(fake_AB)
         if self.opt.add_D_feat_loss:
             pred_fake = pred_fake[-1]
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        self.loss_G_L1 = self.criterionL1(self.fake_B_w_pred_gate, self.real_B) * self.opt.lambda_L1
-
-        # loss for pred_gate
-        # self.real_A_w_pred_gate = self.real_A * self.pred_gate.detach()
-        # real_AB = torch.cat((self.real_A_w_pred_gate, self.real_B_w_pred_gate), 1)
-        # pred_real = self.netD(real_AB)
+        self.loss_G_L1 = self.criterionL1(fake_B, real_B) * self.opt.lambda_L1
 
         self.loss_G = self.loss_G_GAN + self.loss_G_L1
         self.loss_G.backward()
