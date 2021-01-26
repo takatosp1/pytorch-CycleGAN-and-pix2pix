@@ -99,6 +99,12 @@ class SemiAlignedDataset(BaseDataset):
         elif crop_replace == "rand":
             replace_A = (np.random.rand(A.shape[1], A.shape[2], A.shape[0]) - 0.5 ) / 0.5
             replace_B = (np.random.rand(B.shape[1], B.shape[2], B.shape[0]) - 0.5 ) / 0.5
+        elif crop_replace == "mean":
+            mean_A = torch.mean(torch.mean(A, axis=-1),axis=-1)
+            mean_B = torch.mean(torch.mean(B, axis=-1),axis=-1)
+            replace_A[:, :, :] = mean_A
+            replace_B[:, :, :] = mean_B
+
         replace_A = transforms.ToTensor()(replace_A).float()
         replace_B = transforms.ToTensor()(replace_B).float()
 
