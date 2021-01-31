@@ -104,6 +104,9 @@ class SemiAlignedDataset(BaseDataset):
             mean_B = torch.mean(torch.mean(B, axis=-1),axis=-1)
             replace_A[:, :, :] = mean_A
             replace_B[:, :, :] = mean_B
+        elif crop_replace == "facades_blue":
+            replace_A[:, :, :] = np.array([-1, -1, 1])  # (R, G, B)
+            replace_B[:, :, :] = np.array([-1, -1, 1])
 
         replace_A = transforms.ToTensor()(replace_A).float()
         replace_B = transforms.ToTensor()(replace_B).float()
