@@ -49,7 +49,7 @@ class BaseOptions():
 
         parser.add_argument('--gt_crop', default=1, type=int, help='Random crops some blocks of image, set to noise')
         parser.add_argument('--which_crop', default='A', type=str, help='Only activated when gt_crop is true [A|B|AB]')
-        parser.add_argument('--crop_replace',default='image', type=str, help='What to replace the cropped blocks [image|black|white|gray|rand|mean]')
+        parser.add_argument('--crop_replace',default='image', type=str, help='What to replace the cropped blocks [image|black|white|gray|rand|mean|blue]')
         parser.add_argument('--replace_ab_same_idx', default=1, type=int, help='Only activated when crop_replace is image, the replaced AB images should from the same pair or not')
         parser.add_argument('--random_crop', default='random_multiblocks_crop', type=str, help='choose which random crop method, [random_multiblocks_crop|random_oneblock_crop]')
         parser.add_argument('--crop_ratio', default=0.25, type=float, help='Used in random_multiblocks_crop, ratio of areas to be cropped and set to noise')
